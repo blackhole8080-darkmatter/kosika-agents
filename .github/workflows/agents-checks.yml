@@ -1,0 +1,67 @@
+name: Agents checks
+
+# Every agent runs on the Kosika engine, so each run checks out the kosika
+# repo beside this one, exactly as the folders sit on a laptop:
+#   kosika/          the language, engines and Studio
+#   kosika-agents/   this repo
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      kosika_ref:
+        description: "kosika branch to test against"
+        default: "studio"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agents-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Keep line endings as committed
+        run: git config --global core.autocrlf false
+
+      - name: Use a temporary folder with a long name
+        if: runner.os == 'Windows'
+        run: |
+          "TEMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
+          "TMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
+
+      - name: Check out kosika-agents
+        uses: actions/checkout@v4
+        with:
+          path: kosika-agents
+
+      - name: Check out the Kosika engine beside it
+        uses: actions/checkout@v4
+        with:
+          repository: blackhole8080-darkmatter/kosika
+          ref: ${{ github.event.inputs.kosika_ref || 'studio' }}
+          path: kosika
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Kosika and pytest
+        run: python -m pip install --disable-pip-version-check pytest==8.3.5 pytest-xdist==3.6.1 -e kosika
+
+      - name: Run the agent tests
+        working-directory: kosika-agents
+        run: python -m pytest -q -n auto tests
