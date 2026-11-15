@@ -10,7 +10,7 @@ name: Kosika train
 
 on:
   push:
-    branches: [studio, claude/project-thread-01asp3]
+    branches: [main]
     paths: [.github/workflows/kosika-train.yml]
   workflow_dispatch:
     inputs:
@@ -32,9 +32,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 340
     steps:
+      # The training scripts live here; what they learn from is the kosika
+      # repo's own history, checked out beside them as it is on a laptop.
       - uses: actions/checkout@v4
         with:
+          path: kosika-agents
+
+      - uses: actions/checkout@v4
+        with:
+          repository: blackhole8080-darkmatter/kosika
+          ref: studio
           fetch-depth: 0
+          path: kosika
 
       - uses: actions/setup-python@v5
         with:
@@ -47,8 +56,8 @@ jobs:
 
       - name: The training set, from Kosika's own history
         run: |
-          git fetch --quiet origin studio
-          cd examples/virtual_models/training
+          git -C kosika fetch --quiet origin studio
+          cd kosika-agents/models/training
           if [ "${{ github.event.inputs.recipe || 'better' }}" = "better" ]; then
             python make_dataset.py --ref origin/studio --hints --per-commit 25 --name kosika-coder-v2
           else
@@ -59,7 +68,7 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          cd examples/virtual_models/training
+          cd kosika-agents/models/training
           RECIPE="${{ github.event.inputs.recipe || 'better' }}"
           NAME=kosika-coder; [ "$RECIPE" = "better" ] && NAME=kosika-coder-v2
           python cpu_trial.py --recipe "$RECIPE" --name "$NAME" --train "${{ github.event.inputs.examples || '400' }}" --epochs "${{ github.event.inputs.epochs || '2' }}" --eval 15 2>&1 | grep -vE "Warning|warn|Loading weights" | tee ../../../train.log

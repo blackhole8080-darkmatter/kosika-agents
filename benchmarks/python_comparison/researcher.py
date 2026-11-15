@@ -1,6 +1,6 @@
 """The researcher agent, written in plain Python for comparison with Kosika.
 
-It does what examples/agents/researcher/main.kos does: answer a question
+It does what agents/researcher/main.kos does: answer a question
 from the text files in one folder, and show the answer only with a quote
 that is really in one of the lines that were found.
 

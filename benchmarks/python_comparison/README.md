@@ -3,7 +3,7 @@
 The same agent written twice, to see honestly what Kosika gives and what it
 costs.
 
-- Kosika: `examples/agents/researcher/main.kos`
+- Kosika: `agents/researcher/main.kos`
 - Python: `researcher.py` here (standard library only, local Ollama)
 
 Both answer a question from the text files in one folder, show an answer

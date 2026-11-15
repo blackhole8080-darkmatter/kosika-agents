@@ -4,7 +4,7 @@ first stage it cannot pass.
     python run.py --model qwen/qwen3.8-27b --url https://api.groq.com/openai/v1
     python run.py ... --stages 1-4 --limit-seconds 900
 
-The builder (examples/agents/osbuilder) runs as Kosika Studio runs it with
+The builder (agents/osbuilder) runs as Kosika Studio runs it with
 sessions on: in a walled copy of the workspace inside WSL, where make, nasm,
 gcc and QEMU run with no network. Every step it asks for is allowed, as a
 person saying yes would, but only inside that copy.
@@ -39,13 +39,16 @@ from pathlib import Path
 from typing import Any
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parent.parent
+# This benchmark lives in kosika-agents; the Kosika engine it runs on is
+# KOSIKA_HOME, or the kosika folder beside kosika-agents.
+ROOT = HERE.parent.parent
+REPO = Path(os.environ.get("KOSIKA_HOME") or ROOT.parent / "kosika").resolve()
 sys.path.insert(0, str(REPO))
 
 from kosika.app import App  # noqa: E402
 from kosika.model import OpenAICompatibleProvider  # noqa: E402
 
-AGENT = REPO / "examples" / "agents" / "osbuilder"
+AGENT = ROOT / "agents" / "osbuilder"
 WORKSPACE = Path(os.environ.get("OSBUILD_WORKSPACE", r"C:\Users\Aryan\Aryan_Private\kosika-bench\osbuild"))
 
 

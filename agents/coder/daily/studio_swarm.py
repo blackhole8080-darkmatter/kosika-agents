@@ -14,12 +14,14 @@ from __future__ import annotations
 
 import re
 import shutil
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 DAILY = Path.home() / "Aryan_Private" / "kosika-daily"
-REPO = Path(__file__).resolve().parents[4]
+# The Kosika engine: KOSIKA_HOME, or the kosika folder beside kosika-agents.
+REPO = Path(os.environ.get("KOSIKA_HOME") or Path(__file__).resolve().parents[3].parent / "kosika").resolve()
 SHOWN = DAILY / "studio-swarm"
 
 

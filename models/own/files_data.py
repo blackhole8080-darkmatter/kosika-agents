@@ -10,11 +10,13 @@ model is, learns and is judged by is in files.kos, in Kosika.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[2]
+# The kosika repo whose history these examples are made from: KOSIKA_HOME, or the kosika folder beside kosika-agents.
+REPO = Path(os.environ.get("KOSIKA_HOME") or HERE.parents[1].parent / "kosika").resolve()
 KEPT = (".kos", ".py", ".go", ".md")
 SKIPPED = ("site/", "benchmarks/", "archive", "vendor/", "results/", "_probe/", "examples/agents/coder/runs")
 

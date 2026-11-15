@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 HERE = Path(__file__).parent
-KOSIKA = HERE.parent.parent / "examples" / "agents" / "researcher" / "main.kos"
+KOSIKA = HERE.parent.parent / "agents" / "researcher" / "main.kos"
 
 
 def working(lines: list[str], comment: str) -> tuple[int, int]:
@@ -42,7 +42,7 @@ def show(name: str, lines: list[str], comment: str) -> tuple[int, int]:
 def main() -> int:
     kosika = KOSIKA.read_text(encoding="utf-8").splitlines()
     cut = next(i for i, line in enumerate(kosika) if line.startswith("test "))
-    print("Kosika  examples/agents/researcher/main.kos")
+    print("Kosika  agents/researcher/main.kos")
     show("the program", kosika[:cut], "//")
     show("tests and evals", kosika[cut:], "//")
 

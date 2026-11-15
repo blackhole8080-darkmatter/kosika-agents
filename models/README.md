@@ -19,7 +19,7 @@ Run a declared agent with an offline fixture to verify the wiring:
 kosika agent examples/test_host.kos --agent monitor \
   --task "Explain how Kosika model calls are bounded" \
   --model-fixture answers.json \
-  --virtual-model examples/virtual_models/kosika-specialist.json
+  --virtual-model models/kosika-specialist.json
 ```
 
 For a live provider, replace `--model-fixture answers.json` with
@@ -55,7 +55,7 @@ and `evidence` (the evidence objects above), run:
 
 ```sh
 kosika virtual-model add-example \
-  examples/virtual_models/kosika-specialist.json candidate.json
+  models/kosika-specialist.json candidate.json
 ```
 
 Kosika prints the answer and exact source quotes, then requires an interactive

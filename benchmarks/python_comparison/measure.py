@@ -3,7 +3,7 @@
     python measure.py --model qwen2.5:7b --runs 3
 
 The lines the search "found" are fixed, exactly as in the evals at the end
-of examples/agents/researcher/main.kos, so both programs give the model the
+of agents/researcher/main.kos, so both programs give the model the
 same thing to read.
 """
 

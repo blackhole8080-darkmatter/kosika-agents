@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import os
 import sys
 import tempfile
 import time
@@ -34,7 +35,10 @@ from pathlib import Path
 from typing import Any
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parent.parent
+# This benchmark lives in kosika-agents; the Kosika engine it runs on is
+# KOSIKA_HOME, or the kosika folder beside kosika-agents.
+ROOT = HERE.parent.parent
+REPO = Path(os.environ.get("KOSIKA_HOME") or ROOT.parent / "kosika").resolve()
 sys.path.insert(0, str(REPO))
 
 from kosika.cli import _workflow_model_bindings  # noqa: E402
@@ -43,7 +47,7 @@ from kosika.modules import load_program  # noqa: E402
 from kosika.runtime import run  # noqa: E402
 from kosika.system_tools import bind_system_tools  # noqa: E402
 
-AGENT = REPO / "examples" / "agents" / "researcher" / "main.kos"
+AGENT = ROOT / "agents" / "researcher" / "main.kos"
 KINDS = ("words", "meaning", "several", "none")
 
 

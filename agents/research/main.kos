@@ -5,7 +5,7 @@
 // the page to your phone with the paper's link.
 //
 //   kosika test main.kos
-//   kosika studio examples/agents --model qwen2.5:7b --model-protocol ollama
+//   kosika studio agents --model qwen2.5:7b --model-protocol ollama
 //       --allow-folder YOUR_NOTES --embed-model nomic-embed-text
 //       --allow-site export.arxiv.org --allow-site arxiv.org
 //       --notify https://ntfy.sh/your-private-topic
@@ -86,7 +86,7 @@ fn help_text() -> Text {
 // What to say when a hand-over cannot be made at all: the door only works
 // where the agents live in one folder, such as Studio.
 fn unreachable(name: Text) -> Said {
-  return {text: "I could not hand your words to the " + name + " agent here: this door needs the agents to live in one folder, as they do in Kosika Studio. From the command line, run the agent you want directly:\nkosika run examples/agents/" + name + "/main.kos --input ask.json ..."}
+  return {text: "I could not hand your words to the " + name + " agent here: this door needs the agents to live in one folder, as they do in Kosika Studio. From the command line, run the agent you want directly:\nkosika run agents/" + name + "/main.kos --input ask.json ..."}
 }
 
 // The answer as this door gives it: unchanged when it came, and the reason
@@ -175,7 +175,7 @@ test "a refusal from the other agent is passed on with its reason" {
 test "when no agent can be reached the door says so honestly" {
   a = main({text: "When is the demo with Ravi?"})
   expect a.text.starts_with("I could not hand your words to the researcher agent here")
-  expect a.text.contains("kosika run examples/agents/researcher/main.kos")
+  expect a.text.contains("kosika run agents/researcher/main.kos")
   helped = main({text: "help"})
   expect helped.text.contains("front door to the research agents")
   expect helped.text.contains("an exact quote and its line")

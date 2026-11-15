@@ -27,13 +27,15 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
+import os
 import re
 import subprocess
 from collections import defaultdict
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[2]
+# The kosika repo whose history these examples are made from: KOSIKA_HOME, or the kosika folder beside kosika-agents.
+REPO = Path(os.environ.get("KOSIKA_HOME") or HERE.parents[1].parent / "kosika").resolve()
 DAILY = Path.home() / "Aryan_Private" / "kosika-daily" / "examples.jsonl"
 KEPT = (".kos", ".py", ".go", ".md")
 SKIPPED = ("site/", "benchmarks/", "archive", "vendor/", "results/", "_probe/")

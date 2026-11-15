@@ -25,7 +25,8 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[1]
+# The Kosika engine: KOSIKA_HOME, or the kosika folder beside kosika-agents.
+REPO = Path(os.environ.get("KOSIKA_HOME") or HERE.parent.parent / "kosika").resolve()
 PORT = 8791
 URL = f"http://127.0.0.1:{PORT}/v1"
 NAME = "kosika-virtual"

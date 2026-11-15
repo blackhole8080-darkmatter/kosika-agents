@@ -2,7 +2,8 @@
 # plans each next step after reading the page, and Kosika asks you before
 # every step. Needs the model router on port 8791 (learning_router.py).
 param([string]$Goal = "On Kosika's GitHub page, https://github.com/blackhole8080-darkmatter/kosika , open the file KOSIKA.md and tell me its first heading and first sentence.", [int]$Port = 8791)
-$env:PYTHONPATH = (Resolve-Path "$PSScriptRoot\..\..\..").Path
+# The Kosika engine: KOSIKA_HOME, or the kosika folder beside kosika-agents.
+$env:PYTHONPATH = if ($env:KOSIKA_HOME) { $env:KOSIKA_HOME } else { (Resolve-Path "$PSScriptRoot\..\..\..\kosika").Path }
 $env:PYTHONIOENCODING = "utf-8"
 $file = Join-Path $env:TEMP "kosika-hands-goal.json"
 [IO.File]::WriteAllText($file, (@{ g = @{ text = $Goal } } | ConvertTo-Json -Compress))

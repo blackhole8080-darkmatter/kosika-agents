@@ -7,7 +7,7 @@ Every few seconds it gathers what each coder of today's runs is doing (its
 request from todo.md, how long it has worked, how it ended, from its run
 folder in kosika-daily) and how many answers the model router has given
 since the first of them began, and asks Kosika to draw the board
-(examples/agents/hands/board.kos), each coder in its own pointer's colour.
+(agents/hands/board.kos), each coder in its own pointer's colour.
 The page reloads itself, so it stays live; it stops when every coder has
 finished.
 """
@@ -25,8 +25,9 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[3]
-BOARD = REPO / "examples" / "agents" / "hands" / "board.kos"
+# The Kosika engine: KOSIKA_HOME, or the kosika folder beside kosika-agents.
+REPO = Path(os.environ.get("KOSIKA_HOME") or HERE.parents[2].parent / "kosika").resolve()
+BOARD = HERE.parents[1] / "hands" / "board.kos"
 DAILY = Path.home() / "Aryan_Private" / "kosika-daily"
 PAGE = DAILY / "board.html"
 NATIVE = Path.home() / ".kosika" / "bin" / ("kosika-native.exe" if os.name == "nt" else "kosika-native")

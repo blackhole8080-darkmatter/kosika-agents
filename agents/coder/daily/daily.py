@@ -1,4 +1,5 @@
-"""Kosika's daily development: the coder takes the next request in todo.md.
+"""Kosika's daily development: the coder takes the next request in CODER_TODO.md
+(in the kosika repo).
 
     python daily.py              # the next open request
     python daily.py --dry-run    # say which request it would take
@@ -13,7 +14,7 @@ change reaches Kosika only when its owner reads it and applies it:
 
     git apply ~/Aryan_Private/kosika-daily/DATE-N/change.patch
 
-The model is the virtual model router (examples/virtual_models), started
+The model is the virtual model router (models/ in kosika-agents), started
 here when it is not already running, so a day's free allowance used up on
 one model moves the work to the next free one, and at last to a model on
 this computer, instead of stopping it.
@@ -40,16 +41,19 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[3]
+# The Kosika engine: KOSIKA_HOME, or the kosika folder beside kosika-agents.
+REPO = Path(os.environ.get("KOSIKA_HOME") or HERE.parents[2].parent / "kosika").resolve()
 sys.path.insert(0, str(REPO))
 
 from kosika.app import App  # noqa: E402
 from kosika.model import OpenAICompatibleProvider  # noqa: E402
 
-TODO = HERE / "todo.md"
+# The to-do list is about Kosika itself, so it lives in the kosika repo as
+# CODER_TODO.md (KOSIKA_CODER_TODO points somewhere else).
+TODO = Path(os.environ.get("KOSIKA_CODER_TODO") or REPO / "CODER_TODO.md")
 WORK = Path.home() / "Aryan_Private" / "kosika-daily"
 COPIED = ["kosika", "native", "tests/test_short_methods.py", "KOSIKA.md"]
-ROUTER = REPO / "examples" / "virtual_models" / "learning_router.py"
+ROUTER = HERE.parents[2] / "models" / "learning_router.py"
 PORT = int(os.environ.get("KOSIKA_ROUTER_PORT", "8791"))
 
 
@@ -76,7 +80,7 @@ def copy_studio(folder: Path) -> None:
 def keep_answers(since: float) -> None:
     """Tell the router the change passed, so it keeps the answers it gave
     since `since` and gives them again at once if asked the same (see
-    examples/virtual_models/smarter.py). Not in a swarm: there the other
+    models/smarter.py). Not in a swarm: there the other
     coders' answers, which may not pass, came in the same minutes."""
     import urllib.request
 

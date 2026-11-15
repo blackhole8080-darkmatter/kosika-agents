@@ -4,7 +4,8 @@
 # to each; hold Escape to stop it mid-action.
 #   .\demo.ps1 -Agent coder-1
 param([string]$Agent = "coder-1")
-$env:PYTHONPATH = (Resolve-Path "$PSScriptRoot\..\..\..").Path
+# The Kosika engine: KOSIKA_HOME, or the kosika folder beside kosika-agents.
+$env:PYTHONPATH = if ($env:KOSIKA_HOME) { $env:KOSIKA_HOME } else { (Resolve-Path "$PSScriptRoot\..\..\..\kosika").Path }
 $env:PYTHONIOENCODING = "utf-8"
 $note = Join-Path $env:TEMP "kosika-hands-note.json"
 [IO.File]::WriteAllText($note, ('{"n": {"agent": "' + $Agent + '", "text": "Hello Aryan! This is ' + $Agent + ', typing fast with its own coloured pointer."}}'))

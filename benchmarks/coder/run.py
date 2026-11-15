@@ -81,13 +81,16 @@ from pathlib import Path
 from typing import Any
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parent.parent
+# This benchmark lives in kosika-agents; the Kosika engine it runs on is
+# KOSIKA_HOME, or the kosika folder beside kosika-agents.
+ROOT = HERE.parent.parent
+REPO = Path(os.environ.get("KOSIKA_HOME") or ROOT.parent / "kosika").resolve()
 sys.path.insert(0, str(REPO))
 
 from kosika.app import App  # noqa: E402
 from kosika.model import OpenAICompatibleProvider  # noqa: E402
 
-AGENTS = REPO / "examples" / "agents"
+AGENTS = ROOT / "agents"
 
 
 def binder_for(args: argparse.Namespace) -> Any:
@@ -217,9 +220,9 @@ def checked(folder: Path, checks: list[list[str]]) -> tuple[list[str], list[str]
     failed: list[str] = []
     why: list[str] = []
     for command in checks:
-        # {repo} is where this benchmark lives, so a check that must import
-        # Kosika itself works on any computer.
-        command = [part.replace("{repo}", str(REPO)) for part in command]
+        # {repo} is the Kosika engine, so a check that must import Kosika
+        # itself works on any computer; {agents} is where this benchmark lives.
+        command = [part.replace("{repo}", str(REPO)).replace("{agents}", str(ROOT)) for part in command]
         program = sys.executable if command[0] == "python" else shutil.which(command[0])
         if program is None:
             failed.append(f"{command[0]} was not found")

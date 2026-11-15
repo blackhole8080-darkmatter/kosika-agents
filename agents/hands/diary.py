@@ -20,7 +20,8 @@ from datetime import datetime
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[2]
+# The Kosika engine: KOSIKA_HOME, or the kosika folder beside kosika-agents.
+REPO = Path(os.environ.get("KOSIKA_HOME") or HERE.parents[2].parent / "kosika").resolve()
 PROGRAMS = ("hands.py", "browser.py")
 RUNNER = (
     "import json, sys\n"

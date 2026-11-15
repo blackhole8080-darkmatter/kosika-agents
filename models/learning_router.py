@@ -110,7 +110,7 @@ class Ledger:
 
 #: The Kosika program that makes every routing decision.
 CHOOSE = Path(__file__).resolve().parent / "choose.kos"
-NATIVE = base.HERE.parents[1] / "native"
+NATIVE = Path(os.environ.get("KOSIKA_HOME") or base.HERE.parent.parent / "kosika").resolve() / "native"
 #: Kosika's Go engine, built once from native/ and kept here.
 ENGINE = Path.home() / ".kosika" / "bin" / ("kosika-native.exe" if os.name == "nt" else "kosika-native")
 

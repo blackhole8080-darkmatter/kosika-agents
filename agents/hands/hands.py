@@ -82,7 +82,7 @@ RUNNER = (
 def app(name: str) -> dict | None:
     """The program called that, or None when apps.kos does not describe it."""
     if name not in APPS:
-        env = {**os.environ, "PYTHONPATH": str(HERE.parents[2])}
+        env = {**os.environ, "PYTHONPATH": str(Path(os.environ.get("KOSIKA_HOME") or HERE.parents[2].parent / "kosika"))}
         ran = subprocess.run([sys.executable, "-c", RUNNER, str(HERE / "apps.kos"), name],
                              capture_output=True, text=True, encoding="utf-8", env=env, timeout=60)
         try:
