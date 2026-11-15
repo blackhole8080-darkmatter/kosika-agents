@@ -306,6 +306,9 @@ def save_example(request: str, before: Path, after: Path, files: list[str]) -> N
 #: A request a swarm member has taken and is working on.
 TAKEN = "- [~] "
 
+#: How long a swarm member may take before it is stopped.
+MEMBER_SECONDS = int(os.environ.get("KOSIKA_CODER_SECONDS", "2700"))
+
 
 def mark_line(text: str, mark: str, note: str = "") -> None:
     """Mark the line holding `text`, open or taken, in todo.md as it is now:
@@ -344,8 +347,16 @@ def swarm(size: int) -> None:
     started = time.monotonic()
     alone = dict(os.environ, KOSIKA_SWARM="1") if len(open_ones) > 1 else dict(os.environ)
     members = [subprocess.Popen([sys.executable, __file__, "--todo", str(TODO), "--take", text], env=alone) for text in open_ones]
-    for member in members:
-        member.wait()
+    # A member that hangs (a judge step stuck after a failure) must not hold
+    # the whole swarm: after MEMBER_SECONDS it is stopped and its request
+    # marked as not passed.
+    deadline = time.monotonic() + MEMBER_SECONDS
+    for text, member in zip(open_ones, members):
+        try:
+            member.wait(timeout=max(1, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            member.kill()
+            mark_line(text, "- [!] ", f" ({datetime.date.today().isoformat()}, stopped after {MEMBER_SECONDS // 60} minutes)")
     if router is not None:
         router.terminate()
     print(f"Swarm of {len(members)}: {round(time.monotonic() - started)} s for all of them together.")
