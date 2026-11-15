@@ -2383,7 +2383,8 @@ fn go_body(answer: Text) -> Text[] {
 }
 
 fn with_go_body(methods: Text, asked: MethodAsked, answer: Text) -> Text {
-  let body = go_body(answer)
+  let bound = go_bindings(asked, signature(asked))
+  let body = without_rebinding(go_body(answer), asked, signature(asked))
   if body.is_empty() { return methods }
   let plain = methods.replace("\r\n", "\n")
   let lines = plain.split("\n")
@@ -2397,8 +2398,47 @@ fn with_go_body(methods: Text, asked: MethodAsked, answer: Text) -> Text {
     if end < 0 and lines[j] == "\t}}," { end = j }
   }
   if end < 0 { return methods }
-  let now = lines.take(at + 1).concat(body).concat(lines.drop(end)).join("\n")
+  let now = lines.take(at + 1).concat(bound).concat(body).concat(lines.drop(end)).join("\n")
   return if methods.contains("\r\n") { now.replace("\n", "\r\n") } else { now }
+}
+
+// How the Go engine reads a value of a Kosika type into a Go one, or "" for
+// a type it has no plain reading of.
+fn go_read(type_name: Text, from: Text) -> Text {
+  if type_name == "Text" { return "textOf(" + from + ")" }
+  if type_name == "Number" { return "toFloat(" + from + ")" }
+  if type_name == "Bool" { return from + ".(bool)" }
+  return ""
+}
+
+// The variables the program declares at the top of a Go method's body,
+// named as in the Python function: the value the method is called on, then
+// each argument. A model that wrote them the wrong way round no longer can.
+fn go_bindings(asked: MethodAsked, sig: Signature) -> Text[] {
+  var lines: Text[] = []
+  let own = go_read(asked.kind, "r")
+  if not own.is_empty() { lines = lines.append("\t\t" + receiver_name(asked.kind) + " := " + own).append("\t\t_ = " + receiver_name(asked.kind)) }
+  for i in 0 until sig.params.length() {
+    let p = sig.params[i]
+    let read = go_read(p.type, "a[" + i.to_text() + "]")
+    if not read.is_empty() { lines = lines.append("\t\t" + p.name + " := " + read).append("\t\t_ = " + p.name) }
+  }
+  return lines
+}
+
+// The model's body without lines that declare a bound name again.
+fn without_rebinding(body: Text[], asked: MethodAsked, sig: Signature) -> Text[] {
+  var names: Text[] = [receiver_name(asked.kind)]
+  for p in sig.params { names = names.append(p.name) }
+  let kept = for line in body where not (names.contains(line.trim().split(" ").first().or("")) and (line.contains(":= textOf(") or line.contains(":= toFloat(") or line.contains(".(bool)") or line.trim().starts_with("_ ="))) { line }
+  return kept
+}
+
+fn go_returns(result: Text) -> Text {
+  if result == "Text" { return "a Go string (never bigInt of it)" }
+  if result == "Bool" { return "a Go bool" }
+  if result == "Number" { return "bigInt(n) when the answer is a whole number held in an int n, else a float64" }
+  return "the value"
 }
 
 fn examples_said(asked: MethodAsked) -> Text {
@@ -2419,7 +2459,9 @@ fn py_body_task(job: Filling) -> Task {
 
 fn go_body_task(job: Filling, python: Text) -> Task {
   let reads = if job.asked.kind == "Text" { "textOf(r) is the text" } else { "toFloat(r) is the number as a float64, and r.(*big.Int) is it when it is whole" }
-  return {text: "Write the body of one Go function in Kosika's Go engine, the method " + job.asked.name + " in native/methods.go:\n\nfunc(r Value, a []Value) Value {\n\t// the body\n}\n\nIn the body " + reads + ", the arguments are a[0], a[1] in order (textOf(a[0]) for a Text, toFloat(a[0]) for a Number), and you return a Go string, bool, float64 or *big.Int (bigInt(n) makes one from an int). To refuse a call, runFail(\"a short message\") and then return nil. It must give exactly what the Python engine gives, which is:\n```python\n" + python + "\n```\n" + examples_said(job.asked) + failure_said(job.failure) + "\nAnswer with only the lines of the body. No func line, no imports, no explanation."}
+  let bound = go_bindings(job.asked, job.sig)
+  let given = if bound.is_empty() { "In the body " + reads + ", the arguments are a[0], a[1] in order (textOf(a[0]) for a Text, toFloat(a[0]) for a Number)" } else { "The program has already declared these, so use them and do not declare them again:\n" + bound.join("\n").replace("\t\t", "  ") + "\n" }
+  return {text: "Write the body of one Go function in Kosika's Go engine, the method " + job.asked.name + " in native/methods.go:\n\nfunc(r Value, a []Value) Value {\n\t// the body\n}\n\n" + given + "\nReturn " + go_returns(job.sig.result) + ". The package already imports strings, unicode and math. To refuse a call, runFail(\"a short message\") and then return nil. It must give exactly what the Python engine gives, which is:\n```python\n" + python + "\n```\n" + examples_said(job.asked) + failure_said(job.failure) + "\nAnswer with only the lines of the body. No func line, no imports, no explanation."}
 }
 
 fn agreed_result(asked: MethodAsked, ran: Ran) -> Result {
@@ -3798,7 +3840,7 @@ test "a Go body is put inside the method's entry, and only there" {
   asked = method_asked({text: "add a Text method shout() that gives the text in capitals, giving a Text"})
   table = "var textMethods = map[string]method{\n\t\"shout\": {nil, func(r Value, a []Value) Value {\n\t\trunFail(\"shout is not written yet\")\n\t\treturn nil\n\t}},\n\t\"other\": {nil, func(r Value, a []Value) Value {\n\t\treturn nil\n\t}},\n}\n"
   now = with_go_body(table, asked, "```go\nreturn strings.ToUpper(textOf(r))\n```")
-  expect now.contains("\t\"shout\": {nil, func(r Value, a []Value) Value {\n\t\treturn strings.ToUpper(textOf(r))\n\t}},\n\t\"other\"")
+  expect now.contains("\t\"shout\": {nil, func(r Value, a []Value) Value {\n\t\ttext := textOf(r)\n\t\t_ = text\n\t\treturn strings.ToUpper(textOf(r))\n\t}},\n\t\"other\"")
   whole = with_go_body(table, asked, "\"shout\": {nil, func(r Value, a []Value) Value {\n    return strings.ToUpper(textOf(r))\n}},")
   expect whole == now
 }
@@ -3810,4 +3852,20 @@ test "the body task names the function, the examples and the last failure" {
   expect told.text.contains("\"x\".surround(\"<\", \">\") gives \"<x>\"")
   expect told.text.contains("AssertionError")
   expect not told.text.contains("examples:")
+}
+
+test "a Go body starts from the program's own variables, read the right way round" {
+  asked = method_asked({text: "add a Text method surround(left: Text, right: Text) that gives the text with left before it and right after it, giving a Text; examples: `\"x\".surround(\"<\", \">\")` is `\"<x>\"`"})
+  bound = go_bindings(asked, signature(asked))
+  expect bound[0] == "\t\ttext := textOf(r)"
+  expect bound.contains("\t\tleft := textOf(a[0])")
+  expect bound.contains("\t\tright := textOf(a[1])")
+  table = "var textMethods = map[string]method{\n\t\"surround\": {[]string{\"left\", \"right\"}, func(r Value, a []Value) Value {\n\t\trunFail(\"surround is not written yet\")\n\t\treturn nil\n\t}},\n}\n"
+  now = with_go_body(table, asked, "text := textOf(a[0])\nreturn left + text + right")
+  expect now.contains("\t\ttext := textOf(r)\n\t\t_ = text\n")
+  expect not now.contains("textOf(a[0])\n\t\t_ = left\n\t\ttext")
+  expect now.contains("\t\treturn left + text + right\n\t}},")
+  told = go_body_task({asked: asked, sig: signature(asked), failure: ""}, "def _surround(text, left, right):\n    return left + text + right")
+  expect told.text.contains("left := textOf(a[0])")
+  expect told.text.contains("Return a Go string")
 }
