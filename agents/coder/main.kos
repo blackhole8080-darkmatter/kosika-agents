@@ -2298,7 +2298,8 @@ fn unfenced_lines(answer: Text) -> Text[] {
 
 // The lines moved left as far as they go together, then indented by `pad`,
 // with no empty lines at either end.
-fn reindented(lines: Text[], pad: Text) -> Text[] {
+fn reindented(given: Text[], pad: Text) -> Text[] {
+  let lines = first_aligned(given)
   var least = -1
   for line in lines {
     if not line.trim().is_empty() {
@@ -2323,6 +2324,26 @@ fn reindented(lines: Text[], pad: Text) -> Text[] {
   }
   if first > last { return [] }
   return out.drop(first).take(last - first + 1)
+}
+
+// A model often writes a body's first line at the margin and the rest
+// indented, as if the def line were still above it: the first line is then
+// moved in to where the others begin.
+fn first_aligned(lines: Text[]) -> Text[] {
+  var first = -1
+  for i in 0 until lines.length() {
+    if first < 0 and not lines[i].trim().is_empty() { first = i }
+  }
+  if first < 0 or indent_of(lines[first].replace("	", "    ")) > 0 { return lines }
+  var rest = -1
+  for line in lines.drop(first + 1) {
+    if not line.trim().is_empty() {
+      let n = indent_of(line.replace("	", "    "))
+      if rest < 0 or n < rest { rest = n }
+    }
+  }
+  if rest <= 0 { return lines }
+  return lines.take(first).concat([" ".repeat(rest) + lines[first]]).concat(lines.drop(first + 1))
 }
 
 // The body a model wrote for a Python function: what follows its def line
@@ -3868,4 +3889,27 @@ test "a Go body starts from the program's own variables, read the right way roun
   told = go_body_task({asked: asked, sig: signature(asked), failure: ""}, "def _surround(text, left, right):\n    return left + text + right")
   expect told.text.contains("left := textOf(a[0])")
   expect told.text.contains("Return a Go string")
+}
+
+test "a body whose first line sits at the margin and the rest indented is put right" {
+  asked = method_asked({text: "add a Text method is_upper_letter() that says whether the text is one letter from A to Z, giving a Bool; examples: `\"Q\".is_upper_letter()` is `true`"})
+  source = "def _is_upper_letter(text):
+    raise RuntimeError(\"is_upper_letter is not written yet\")
+
+
+METHODS: tuple[Method, ...] = (
+)
+"
+  now = with_py_body(source, asked, "if len(text) != 1:
+        return False
+    return \"A\" <= text <= \"Z\"")
+  expect now.contains("def _is_upper_letter(text):
+    if len(text) != 1:
+        return False
+    return \"A\" <= text <= \"Z\"
+
+
+METHODS")
+  expect with_py_body(source, asked, "return text == text.upper()").contains("    return text == text.upper()
+")
 }
