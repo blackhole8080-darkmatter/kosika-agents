@@ -1,7 +1,9 @@
-// Each agent's name and mascot, drawn and animated by Kosika: Kosi the sun,
-// Nova the fox, Quark the owl and Comet the hare, each in its agent's own
-// colour. An agent without a mascot here is drawn as a spark with its own
-// name, until it is given one.
+// Each agent's name and mascot, drawn and animated by Kosika. The Kosika
+// family has Sanskrit names and modern faces: Kosi the sun, and the coders
+// Shilpi the fox, Drishti the owl, Yantra the bot and Setu the cat, with
+// Vayu the hare for the scout, each in its agent's own colour. An agent
+// without a mascot here is drawn as a spark with its own name, until it is
+// given one.
 //
 // A mascot shows how its agent is doing, in motion:
 //   idle     breathes, blinks now and then, its tail or rays turning slowly
@@ -26,14 +28,16 @@ record Mascot { agent: Text nickname: Text creature: Text line: Text }
 fn mascots() -> Mascot[] {
   return [
     {agent: "Kosika", nickname: "Kosi", creature: "sun", line: "warm and steady; keeps the whole team going"},
-    {agent: "coder-1", nickname: "Nova", creature: "fox", line: "quick and clever; writes the code"},
-    {agent: "coder-2", nickname: "Quark", creature: "owl", line: "watchful; looks closely and tests"},
-    {agent: "scout", nickname: "Comet", creature: "hare", line: "fast; runs ahead to read the web"}
+    {agent: "coder-1", nickname: "Shilpi", creature: "fox", line: "shilpi, the craftsman: quick and clever, writes the code"},
+    {agent: "coder-2", nickname: "Drishti", creature: "owl", line: "drishti, sight: watchful, looks closely and tests"},
+    {agent: "coder-3", nickname: "Yantra", creature: "bot", line: "yantra, the machine: exact, builds the Go engine's half"},
+    {agent: "coder-4", nickname: "Setu", creature: "cat", line: "setu, the bridge: carries a change through to the book"},
+    {agent: "scout", nickname: "Vayu", creature: "hare", line: "vayu, the wind: fast, runs ahead to read the web"}
   ]
 }
 
 fn known_creatures() -> Text[] {
-  return ["sun", "fox", "owl", "hare", "spark"]
+  return ["sun", "fox", "owl", "hare", "bot", "cat", "spark"]
 }
 
 fn mascot_states() -> Text[] {
@@ -47,7 +51,7 @@ fn mascot_for(agent: Text) -> Mascot {
   return {agent: agent, nickname: agent, creature: "spark", line: "a new agent, still finding its shape"}
 }
 
-// "Nova the fox"; an agent with no mascot is just its name.
+// "Shilpi the fox"; an agent with no mascot is just its name.
 fn title_for(agent: Text) -> Text {
   let m = mascot_for(agent)
   if m.creature == "spark" { return agent }
@@ -126,6 +130,29 @@ fn hare(c: Text) -> Text {
     + f"<path d=\"M46 72 L34 70 M46 75 L35 77 M74 72 L86 70 M74 75 L85 77\" stroke=\"{ink()}\" stroke-width=\"1\" opacity=\".55\" stroke-linecap=\"round\"/>"
 }
 
+// A small rounded robot: a screen for a face, an antenna that swishes.
+fn bot(c: Text) -> Text {
+  return f"<g class=\"mz-ear\"><path d=\"M60 30 L60 14\" stroke=\"{c}\" stroke-width=\"4\" stroke-linecap=\"round\"/><circle cx=\"60\" cy=\"11\" r=\"6\" fill=\"{gold()}\"/></g>"
+    + f"<rect x=\"38\" y=\"84\" width=\"44\" height=\"26\" rx=\"12\" fill=\"{c}\"/><rect x=\"52\" y=\"92\" width=\"16\" height=\"8\" rx=\"4\" fill=\"{cream()}\" opacity=\".85\"/>"
+    + f"<g class=\"mz-tail\"><rect x=\"22\" y=\"52\" width=\"8\" height=\"20\" rx=\"4\" fill=\"{c}\"/><rect x=\"90\" y=\"52\" width=\"8\" height=\"20\" rx=\"4\" fill=\"{c}\"/></g>"
+    + f"<rect x=\"28\" y=\"30\" width=\"64\" height=\"54\" rx=\"18\" fill=\"{c}\"/>"
+    + f"<rect x=\"36\" y=\"40\" width=\"48\" height=\"34\" rx=\"11\" fill=\"{ink()}\"/>"
+    + f"<g class=\"mz-eye\"><rect x=\"46\" y=\"50\" width=\"8\" height=\"11\" rx=\"4\" fill=\"{c}\"/><rect x=\"66\" y=\"50\" width=\"8\" height=\"11\" rx=\"4\" fill=\"{c}\"/></g>"
+    + f"<path d=\"M53 67 Q60 71 67 67\" stroke=\"{c}\" stroke-width=\"2.4\" fill=\"none\" stroke-linecap=\"round\"/>"
+}
+
+// A round cat with pointed ears and a curling tail.
+fn cat(c: Text) -> Text {
+  return f"<g class=\"mz-tail\"><path d=\"M80 104 Q112 104 104 76 Q100 66 92 70 Q100 78 96 88 Q92 96 78 96 Z\" fill=\"{c}\"/></g>"
+    + f"<ellipse cx=\"60\" cy=\"98\" rx=\"24\" ry=\"15\" fill=\"{c}\"/><ellipse cx=\"60\" cy=\"102\" rx=\"10\" ry=\"8\" fill=\"{cream()}\" opacity=\".9\"/>"
+    + f"<g class=\"mz-ear\"><path d=\"M32 52 L34 20 L56 40 Z\" fill=\"{c}\"/><path d=\"M37 45 L38 29 L49 40 Z\" fill=\"{blush()}\" opacity=\".7\"/></g>"
+    + f"<g class=\"mz-ear mz-ear-r\"><path d=\"M88 52 L86 20 L64 40 Z\" fill=\"{c}\"/><path d=\"M83 45 L82 29 L71 40 Z\" fill=\"{blush()}\" opacity=\".7\"/></g>"
+    + f"<circle cx=\"60\" cy=\"60\" r=\"28\" fill=\"{c}\"/>"
+    + eyes(49, 71, 57, 3.8)
+    + f"<path d=\"M57 67 L63 67 L60 70.5 Z\" fill=\"{blush()}\"/><path d=\"M60 70.5 Q56 75 52 73 M60 70.5 Q64 75 68 73\" stroke=\"{ink()}\" stroke-width=\"1.6\" fill=\"none\" stroke-linecap=\"round\"/>"
+    + f"<path d=\"M44 66 L30 64 M44 69 L31 71 M76 66 L90 64 M76 69 L89 71\" stroke=\"{cream()}\" stroke-width=\"1.2\" opacity=\".7\" stroke-linecap=\"round\"/>"
+}
+
 fn sun(c: Text) -> Text {
   let rays = (for angle in [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330] {
     let long = if angle % 60 == 0 { "18" } else { "12" }
@@ -152,6 +179,8 @@ fn creature(kind: Text, c: Text) -> Text {
     case "fox" { fox(c) }
     case "owl" { owl(c) }
     case "hare" { hare(c) }
+    case "bot" { bot(c) }
+    case "cat" { cat(c) }
     case _ { spark(c) }
   }
 }
@@ -230,7 +259,7 @@ record Picture { html: Text }
 
 fn sheet_page(title: Text) -> Text {
   let names = (for m in mascots() { m.agent }).append("helper")
-  let colours = (for name in ["amber", "pink", "sky", "mint", "violet"] { look(name) })
+  let colours = (for name in ["amber", "pink", "sky", "violet", "lime", "mint", "gold"] { look(name) })
   var rows: Text[] = []
   var at = 0
   for agent in names {
@@ -258,11 +287,13 @@ workflow sheet(s: Sheet) -> Picture {
 
 test "every agent with a kit has a mascot, each with its own name" {
   expect (for m in mascots() { mascot_problems(m).join("; ") }).join("") == ""
-  expect title_for("coder-1") == "Nova the fox"
-  expect title_for("coder-2") == "Quark the owl"
-  expect title_for("scout") == "Comet the hare"
+  expect title_for("coder-1") == "Shilpi the fox"
+  expect title_for("coder-2") == "Drishti the owl"
+  expect title_for("coder-3") == "Yantra the bot"
+  expect title_for("coder-4") == "Setu the cat"
+  expect title_for("scout") == "Vayu the hare"
   expect title_for("Kosika") == "Kosi the sun"
-  expect tag_for("coder-1") == "Nova"
+  expect tag_for("coder-1") == "Shilpi"
 }
 
 test "an agent without a mascot is a spark with its own name" {
@@ -272,7 +303,7 @@ test "an agent without a mascot is a spark with its own name" {
 }
 
 test "a bad mascot is told" {
-  said = mascot_problems({agent: "x", nickname: "Nova", creature: "dragon", line: ""}).join("\n")
+  said = mascot_problems({agent: "x", nickname: "Shilpi", creature: "dragon", line: ""}).join("\n")
   expect said.contains("'dragon' is not a creature")
   expect said.contains("already coder-1's name")
 }
@@ -281,13 +312,15 @@ test "a mascot is drawn in its agent's colour, showing its state" {
   svg = mascot_svg("coder-1", "#ff3ea5", "waiting", 80)
   expect svg.contains("class=\"mz mz-waiting\"")
   expect svg.contains("fill=\"#ff3ea5\"")
-  expect svg.contains("aria-label=\"Nova the fox, waiting\"")
+  expect svg.contains("aria-label=\"Shilpi the fox, waiting\"")
   expect svg.contains("width=\"80\"")
   expect svg.contains(">?</text>")
   expect mascot_svg("scout", "#4fe0a6", "dancing", 40).contains("mz mz-idle")
   expect mascot_svg("coder-2", "#55d6ff", "done", 40).contains("mz-fx")
   expect mascot_svg("Kosika", "#ff8a4c", "typing", 40).contains("mz-rays")
   expect mascot_alone("coder-1", "#ff3ea5", "idle", 40).contains("<style>")
+  expect mascot_svg("coder-3", "#a78bfa", "typing", 40).contains("mz-eye")
+  expect mascot_svg("coder-4", "#a3e635", "idle", 40).contains("Setu the cat, idle")
   expect not mascot_svg("coder-1", "#ff3ea5", "idle", 40).contains("<style>")
 }
 

@@ -28,6 +28,12 @@ fn kits() -> Kit[] {
     {name: "coder-2", colour: "sky", skills: ["windows", "coder/tests"], tools: ["hand"],
      hands: ["look", "press"], typing: "steady", patience: 3,
      servers: ["files"], model: "qwen3-small"},
+    {name: "coder-3", colour: "violet", skills: ["windows", "coder/python"], tools: ["hand"],
+     hands: ["look", "press"], typing: "steady", patience: 3,
+     servers: ["files", "kosika"], model: "kosika-coder"},
+    {name: "coder-4", colour: "lime", skills: ["windows", "coder/tests"], tools: ["hand"],
+     hands: ["look", "press"], typing: "steady", patience: 3,
+     servers: ["files"], model: "kosika-coder"},
     {name: "scout", colour: "mint", skills: ["web-reading"], tools: ["hand"],
      hands: ["browse"], typing: "instant", patience: 3,
      servers: ["fetch"], model: "kosika-router"}

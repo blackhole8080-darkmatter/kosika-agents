@@ -76,7 +76,7 @@ test "a results page moves gently and uses only the palette" {
 test "each card names its agent's mascot and shows its proof" {
   r: Results = {title: "Round 3", items: [{agent: "coder-1", colour: "pink", title: "Skills", what: "Open format", proof: "name: motion", tests: "7 passed"}], phone: {title: "Kosika asks", line: "git status"}}
   html = results_page(r)
-  expect html.contains("Nova the fox")
+  expect html.contains("Shilpi the fox")
   expect html.contains("<pre>name: motion</pre>")
   expect html.contains("Yes, do it")
 }

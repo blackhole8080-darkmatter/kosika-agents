@@ -145,8 +145,10 @@ from an environment, each pinned to a manifest.)
 ## Names and mascots
 
 Every agent has a name and a mascot, drawn and animated in Kosika
-(`mascots.kos`): Kosi the sun (Kosika), Nova the fox (coder-1), Quark the
-owl (coder-2) and Comet the hare (scout). Each is drawn in its agent's own
+(`mascots.kos`), Sanskrit names with modern faces: Kosi the sun (Kosika),
+Shilpi the fox (coder-1, the craftsman), Drishti the owl (coder-2, sight),
+Yantra the bot (coder-3, the machine), Setu the cat (coder-4, the bridge) and
+Vayu the hare (scout, the wind). Each is drawn in its agent's own
 colour and moves with how the agent is doing: it breathes and blinks when
 idle, bobs with a question bubble while it waits for your yes, twitches its
 ears while typing, hops when a job is done and droops when one is not. The
@@ -160,7 +162,7 @@ name; give it one by adding a line to `mascots()`.
 
 `kosika serve-mcp` serves a Kosika program's workflows as MCP tools, so any
 AI app that speaks MCP (Claude Desktop, an IDE, another Kosika program) can
-ask Nova, Quark, Comet or Kosi to do a job:
+ask Shilpi, Drishti, Yantra, Setu, Vayu or Kosi to do a job:
 
     kosika serve-mcp plan.kos --only go --only note -- --allow-shell --allow-folder . --approve-in asks --model kosika-virtual --model-url http://127.0.0.1:8791/v1 --model-protocol openai
 

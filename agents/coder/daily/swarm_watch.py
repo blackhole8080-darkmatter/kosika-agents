@@ -76,7 +76,7 @@ def state(logs: list[Path]) -> dict:
             third = report.read_text(encoding="utf-8").split("\n")[2] if report.read_text(encoding="utf-8").count("\n") >= 2 else ""
             result = "passed" if "passed its checks" in third else "did not pass"
             ended = report.stat().st_mtime
-        coders.append({"name": f"coder-{at}", "request": request_of(run), "seconds": int(ended - began),
+        coders.append({"name": f"coder-{(at - 1) % 4 + 1}", "request": request_of(run), "seconds": int(ended - began),
                        "calls": 0, "doing": "", "result": result})
     if runs:
         count, last = answers_since(min(r.stat().st_ctime for r in runs), logs)

@@ -134,15 +134,15 @@ test "an agent waiting for a yes is shown as asking" {
   html = team_page({title: "Agents", entries: [], waiting: waiting})
   expect html.contains("waiting for your yes")
   expect html.contains("1 action(s) waiting")
-  expect html.contains("Nova the fox, waiting")
-  expect html.contains("Quark the owl, idle")
+  expect html.contains("Shilpi the fox, waiting")
+  expect html.contains("Drishti the owl, idle")
 }
 
 test "a card says what the agent did last and how it ended" {
   e: Entry = {run: 1, at: "07:10:00", job: "press", step: "press", args: ["hands.py", "--agent", "coder-2", "press", "notepad", "Edit"], exit_code: 0, said: "", approved_by: "aryan"}
   html = team_page({title: "Agents", entries: [e], waiting: []})
   expect html.contains("last: done")
-  expect html.contains("Quark the owl, done")
+  expect html.contains("Drishti the owl, done")
   expect html.contains("press notepad Edit</code> at 07:10:00")
 }
 

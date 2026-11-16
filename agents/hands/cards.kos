@@ -51,6 +51,6 @@ test "the page has a card for every agent, each in its own colour" {
   missing = (for k in kits() { if html.contains(k.name + "</small></h2>") { "" } else { k.name } }).join("")
   expect missing == ""
   expect html.contains("--c:#ff3ea5") and html.contains("--c:#55d6ff")
-  expect html.contains("<h2>Nova<small>the fox · coder-1</small></h2>")
-  expect html.contains("Quark the owl, idle")
+  expect html.contains("<h2>Shilpi<small>the fox · coder-1</small></h2>")
+  expect html.contains("Drishti the owl, idle")
 }
