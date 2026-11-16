@@ -2150,7 +2150,7 @@ fn docs_part(asked: MethodAsked) -> Task {
 // called with sample arguments too, a few of each type it takes, and a
 // call that fails must fail in both engines.
 fn agree_script() -> Text {
-  return "import itertools, os, re, subprocess, sys, tempfile\nname, kind = sys.argv[1], sys.argv[2]\nsource = open('kosika/builtin_methods.py', encoding='utf-8').read()\nfound = re.search(r'Method\\(\\s*\"' + kind + r'\",\\s*\"' + name + r'\",\\s*\\((.*?)\\),\\s*\"([^\"]+)\"', source, re.S)\nif not found:\n    print('the Python engine has no Method line for ' + kind + ' ' + name)\n    sys.exit(1)\nparams = re.findall(r'\\(\\s*\"(\\w+)\",\\s*\"([^\"]+)\"\\s*\\)', found.group(1))\nresult = found.group(2)\nvalues = {'Text': ['\"\"', '\"abc\"', '\" 12 \"', '\"banana\"', '\"Hello World\"'], 'Number': ['0', '-2.5', '7', '3'], 'Bool': ['true', 'false']}\nreceivers = values.get(kind)\nchoices = [values.get(t) for _, t in params]\nif receivers is None or None in choices:\n    print('skipped: no samples for ' + kind + ' or one of its parameters')\n    sys.exit(0)\nargument_samples = {'Text': ['\"a\"', '\"an\"', '\"zz\"', '\"\"'], 'Number': ['0', '1', '2'], 'Bool': ['true']}\ncombos = list(itertools.product(*[argument_samples[t] for _, t in params]))[:6] or [()]\ncalls = []\nfor receiver in receivers:\n    for combo in combos:\n        args = ', '.join(f'{p}: {v}' for (p, _), v in zip(params, combo))\n        calls.append(f'({receiver}).{name}({args})')\nfolder = tempfile.mkdtemp()\nengine = os.path.join(folder, 'kosika-native.exe' if os.name == 'nt' else 'kosika-native')\nbuilt = subprocess.run(['go', '-C', os.path.join(os.getcwd(), 'native'), 'build', '-o', engine, '.'], capture_output=True, text=True)\nif built.returncode != 0:\n    print('the Go engine does not build: ' + built.stderr[-1500:])\n    sys.exit(1)\n\n\ndef run_both(call):\n    program = 'record Out { v: ' + result + ' }\\nfn f() -> Out {\\n  return {v: ' + call + '}\\n}\\nworkflow main() -> Out { out = f() }\\n'\n    path = os.path.join(folder, 'agree.kos')\n    open(path, 'w', encoding='utf-8').write(program)\n    py = subprocess.run([sys.executable, '-m', 'kosika.cli', 'run', path], capture_output=True, text=True, cwd=folder,\n                        env=dict(os.environ, PYTHONPATH=os.getcwd()))\n    go = subprocess.run([engine, 'run', path], capture_output=True, text=True, cwd=folder)\n    said = lambda ran: (ran.stdout.strip().splitlines() or ['FAILED'])[0] if ran.returncode == 0 else 'FAILED'\n    return said(py), said(go)\n\n\napart = 0\nfor call in calls:\n    py, go = run_both(call)\n    same = py == go\n    apart += 0 if same else 1\n    print(('same  ' if same else 'APART ') + call + '  python: ' + py + '  go: ' + go)\nsys.exit(0 if apart == 0 else 1)\n"
+  return "import itertools, os, re, subprocess, sys, tempfile\nname, kind = sys.argv[1], sys.argv[2]\nsys.path.insert(0, os.getcwd())\nfrom kosika.checker import check\nfrom kosika.parser import parse\nfrom kosika.runtime import run\nsource = open('kosika/builtin_methods.py', encoding='utf-8').read()\nfound = re.search(r'Method\\(\\s*\"' + kind + r'\",\\s*\"' + name + r'\",\\s*\\((.*?)\\),\\s*\"([^\"]+)\"', source, re.S)\nif not found:\n    print('the Python engine has no Method line for ' + kind + ' ' + name)\n    sys.exit(1)\nparams = re.findall(r'\\(\\s*\"(\\w+)\",\\s*\"([^\"]+)\"\\s*\\)', found.group(1))\nresult = found.group(2)\nvalues = {'Text': ['\"\"', '\"abc\"', '\" 12 \"', '\"banana\"', '\"Hello World\"'], 'Number': ['0', '-2.5', '7', '3'], 'Bool': ['true', 'false']}\nreceivers = values.get(kind)\nchoices = [values.get(t) for _, t in params]\nif receivers is None or None in choices:\n    print('skipped: no samples for ' + kind + ' or one of its parameters')\n    sys.exit(0)\nargument_samples = {'Text': ['\"a\"', '\"an\"', '\"zz\"', '\"\"'], 'Number': ['0', '1', '2'], 'Bool': ['true']}\ncombos = list(itertools.product(*[argument_samples[t] for _, t in params]))[:6] or [()]\ncalls = []\nfor receiver in receivers:\n    for combo in combos:\n        args = ', '.join(f'{p}: {v}' for (p, _), v in zip(params, combo))\n        calls.append(f'({receiver}).{name}({args})')\nfolder = tempfile.mkdtemp()\nengine = os.path.join(folder, 'kosika-native.exe' if os.name == 'nt' else 'kosika-native')\nbuilt = subprocess.run(['go', '-C', os.path.join(os.getcwd(), 'native'), 'build', '-o', engine, '.'], capture_output=True, text=True)\nif built.returncode != 0:\n    print('the Go engine does not build: ' + built.stderr[-1500:])\n    sys.exit(1)\n\n\ndef run_both(call):\n    program = 'record Out { v: ' + result + ' }\\nfn f() -> Out {\\n  return {v: ' + call + '}\\n}\\nworkflow main() -> Out { out = f() }\\n'\n    path = os.path.join(folder, 'agree.kos')\n    open(path, 'w', encoding='utf-8').write(program)\n    try:\n        made = parse(program)\n        check(made)\n        py = str(run(made, 'main', None, inputs={}))\n    except Exception:\n        py = 'FAILED'\n    go = subprocess.run([engine, 'run', path], capture_output=True, text=True, cwd=folder)\n    said = lambda ran: (ran.stdout.strip().splitlines() or ['FAILED'])[0] if ran.returncode == 0 else 'FAILED'\n    return py, said(go)\n\n\napart = 0\nfor call in calls:\n    py, go = run_both(call)\n    same = py == go\n    apart += 0 if same else 1\n    print(('same  ' if same else 'APART ') + call + '  python: ' + py + '  go: ' + go)\nsys.exit(0 if apart == 0 else 1)\n"
 }
 
 // ---------------------------------------------------------------- examples
@@ -2405,7 +2405,7 @@ fn go_body(answer: Text) -> Text[] {
 
 fn with_go_body(methods: Text, asked: MethodAsked, answer: Text) -> Text {
   let bound = go_bindings(asked, signature(asked))
-  let body = without_rebinding(go_body(answer), asked, signature(asked))
+  let body = (for line in without_rebinding(go_body(answer), asked, signature(asked)) { go_tidied(line) })
   if body.is_empty() { return methods }
   let plain = methods.replace("\r\n", "\n")
   let lines = plain.split("\n")
@@ -2421,6 +2421,26 @@ fn with_go_body(methods: Text, asked: MethodAsked, answer: Text) -> Text {
   if end < 0 { return methods }
   let now = lines.take(at + 1).concat(bound).concat(body).concat(lines.drop(end)).join("\n")
   return if methods.contains("\r\n") { now.replace("\n", "\r\n") } else { now }
+}
+
+// A model writes Kosika's type names as if they were Go conversions,
+// Bool(false) or Text(x); the Go engine has no such names, so they become
+// Go's own: bool, string and float64.
+fn go_tidied(line: Text) -> Text {
+  var out = line
+  for pair in ["Bool(=bool(", "Text(=string(", "Number(=float64("] {
+    let wrong = pair.split("=")[0]
+    let right = pair.split("=")[1]
+    let parts = out.split(wrong)
+    var joined = parts[0]
+    for i in 1 until parts.length() {
+      let before = joined.drop(joined.length() - 1)
+      let inside_name = before != "" and "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.".contains(before)
+      joined = joined + (if inside_name { wrong } else { right }) + parts[i]
+    }
+    out = joined
+  }
+  return out
 }
 
 // How the Go engine reads a value of a Kosika type into a Go one, or "" for
@@ -3912,4 +3932,10 @@ METHODS: tuple[Method, ...] = (
 METHODS")
   expect with_py_body(source, asked, "return text == text.upper()").contains("    return text == text.upper()
 ")
+}
+
+test "Kosika's type names written as Go conversions become Go's own" {
+  expect go_tidied("		return Bool(false)") == "		return bool(false)"
+  expect go_tidied("return Text(x) + Number(y)") == "return string(x) + float64(y)"
+  expect go_tidied("return isBool(x) || r.Bool(x)") == "return isBool(x) || r.Bool(x)"
 }
