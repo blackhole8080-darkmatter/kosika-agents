@@ -285,6 +285,33 @@ workflow sheet(s: Sheet) -> Picture {
   result = {html: sheet_page(s.title)}
 }
 
+// One agent's mascot with its motion inside, and its name, for a page that
+// draws it on its own (Kosika Studio's Coders page):
+//   kosika run mascots.kos --workflow picture --input '{"p": {"agent": "coder-1", "state": "typing", "size": 72}}'
+record MascotWant { agent: Text state: Text size: Number }
+record MascotDrawn { svg: Text title: Text }
+
+fn drawn(w: MascotWant) -> MascotDrawn {
+  return {svg: mascot_alone(w.agent, look(kit_colour(w.agent)), w.state, w.size), title: title_for(w.agent)}
+}
+
+// The colour each agent's kit gives it (kits.kos), named as look() knows it.
+fn kit_colour(agent: Text) -> Text {
+  return match agent {
+    case "Kosika" { "amber" }
+    case "coder-1" { "pink" }
+    case "coder-2" { "sky" }
+    case "coder-3" { "violet" }
+    case "coder-4" { "lime" }
+    case "scout" { "mint" }
+    case _ { "gold" }
+  }
+}
+
+workflow picture(p: MascotWant) -> MascotDrawn {
+  result = drawn(p)
+}
+
 test "every agent with a kit has a mascot, each with its own name" {
   expect (for m in mascots() { mascot_problems(m).join("; ") }).join("") == ""
   expect title_for("coder-1") == "Shilpi the fox"
@@ -331,4 +358,12 @@ test "the mascots' motion passes Kosika Designs' motion check" {
 
 test "every colour of the mascot sheet is named from Kosika Designs' palette" {
   expect raw_colours(sheet_css() + mascot_css()) == []
+}
+
+test "one mascot is drawn alone, in its kit's colour, with its name" {
+  d = drawn({agent: "coder-3", state: "typing", size: 72})
+  expect d.title == "Yantra the bot"
+  expect d.svg.contains("<style>")
+  expect d.svg.contains(look("violet"))
+  expect drawn({agent: "helper", state: "idle", size: 40}).title == "helper"
 }
