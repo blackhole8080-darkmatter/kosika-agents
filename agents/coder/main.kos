@@ -2521,13 +2521,306 @@ workflow fill_py(job: Filling) -> Result {
 }
 
 workflow fill_go(job: Filling) -> Result {
-  source = execute coder.read_file("kosika/builtin_methods.py") otherwise {text: ""}
-  table  = execute coder.read_file("native/methods.go") otherwise {text: ""}
-  asked  = go_body_task(job, python_lines(source.text, job.asked.name))
-  code   = use_model scribe(asked.text) retry 1 learn by asked.text otherwise {text: ""}
-  saved  = call save_body({path: "native/methods.go", old: table.text, now: with_go_body(table.text, job.asked, code.text), name: job.asked.name})
+  source  = execute coder.read_file("kosika/builtin_methods.py") otherwise {text: ""}
+  table   = execute coder.read_file("native/methods.go") otherwise {text: ""}
+  listed  = execute runner.run_python(["-c", helpers_script()])
+  helpers = helpers_of(listed)
+  python  = python_lines(source.text, job.asked.name)
+  asked   = with_helpers(go_body_task(job, python), helpers)
+  first   = use_model scribe(asked.text) retry 1 learn by asked.text otherwise {text: ""}
+  code    = call go_checked({job: job, python: python, helpers: helpers, table: table.text, code: first.text, round: 1})
+  saved   = call save_body({path: "native/methods.go", old: table.text, now: with_go_body(table.text, job.asked, code.text), name: job.asked.name})
   agreed = execute runner.run_python(agree_args(job.asked))
   result = agreed_result(job.asked, agreed)
+  require approval
+}
+
+// ---------------------------------------------------------------- compiled before it is kept
+//
+// A small model writing Go most often fails in ways the Go compiler names
+// exactly: a helper that is not in the package, a package that is not
+// imported, a float64 where an int is wanted. So before a Go body is kept
+// it is checked twice, by code. First the program reads the body's calls
+// against the names the package really has (a guard that needs no
+// compiler); then the body is put into a copy of native/ and go vet
+// compiles it. What either finds goes back to the model in the compiler's
+// own words, and the model writes the body again, at most twice. Each
+// round is kept in go-repairs.kl, the broken body, what was wrong and the
+// next try, so a later model can be taught from Kosika's own repairs.
+
+// The package's names, the packages methods.go imports, and the helpers
+// its methods call most, with their signatures.
+record Helpers { names: Text[] imports: Text[] used: Text[] }
+// One body to check: the job, the Python it must match, the package's
+// names, methods.go as it is, the body's text, and which round this is.
+record GoFix { job: Filling python: Text helpers: Helpers table: Text code: Text round: Number }
+record Vetted { ok: Bool said: Text }
+// One round of repair, as go-repairs.kl keeps it.
+record Repair { method: Text round: Number broken: Text wrong: Text fixed: Text passed: Bool }
+record RepairKept { path: Text by: Text entry: Repair }
+record RepairAt { n: Number hash: Text }
+
+tool keep_repair {
+  source system "log"
+  operation: "append"
+  access: observe
+  input: RepairKept
+  output: RepairAt
+}
+
+agent keeper {
+  can: [keep_repair]
+  max_steps: 1
+}
+
+fn go_rounds() -> Number {
+  return 2
+}
+
+fn helpers_script() -> Text {
+  return "import collections, glob, os, re\nfolder = os.path.join(os.getcwd(), 'native')\nsigs = {}\nnames = set()\nfor path in sorted(glob.glob(os.path.join(folder, '*.go'))):\n    if path.endswith('_test.go'):\n        continue\n    text = open(path, encoding='utf-8').read()\n    for m in re.finditer(r'^func ([A-Za-z_]\\w*)(?:\\[[^\\]]*\\])?(\\([^)]*\\))([^{\\n]*)\\{', text, re.M):\n        names.add(m.group(1))\n        sigs[m.group(1)] = (m.group(1) + m.group(2) + ' ' + m.group(3).strip()).strip()\n    for m in re.finditer(r'^(?:type|var|const) ([A-Za-z_]\\w*)', text, re.M):\n        names.add(m.group(1))\n    for block in re.findall(r'^(?:var|const|type) \\((.*?)^\\)', text, re.M | re.S):\n        for m in re.finditer(r'^\\t([A-Za-z_]\\w*)', block, re.M):\n            names.add(m.group(1))\nsource = open(os.path.join(folder, 'methods.go'), encoding='utf-8').read()\nimports = []\nblock = re.search(r'^import \\((.*?)^\\)', source, re.M | re.S)\nfor spec in re.findall(r'\"([^\"]+)\"', block.group(1) if block else ''):\n    imports.append(spec.split('/')[-1])\nfor spec in re.findall(r'^import \"([^\"]+)\"', source, re.M):\n    imports.append(spec.split('/')[-1])\nused = collections.Counter(n for n in re.findall(r'(?<![\\w.])([A-Za-z_]\\w*)\\(', source) if n in sigs)\nprint('NAMES ' + ' '.join(sorted(names)))\nprint('IMPORTS ' + ' '.join(imports))\nfor name, _ in used.most_common(20):\n    print('USED ' + sigs[name])\n"
+}
+
+fn vet_script() -> Text {
+  return "import os, re, shutil, subprocess, sys, tempfile\nold, new = sys.argv[1], sys.argv[2]\nfolder = tempfile.mkdtemp()\ncopy = os.path.join(folder, 'native')\nshutil.copytree(os.path.join(os.getcwd(), 'native'), copy, ignore=shutil.ignore_patterns('*.exe', 'kosika-native', '*_test.go'))\npath = os.path.join(copy, 'methods.go')\ntext = open(path, encoding='utf-8', newline='').read().replace('\\r\\n', '\\n')\nold, new = old.replace('\\r\\n', '\\n'), new.replace('\\r\\n', '\\n')\nif old not in text:\n    print('the method entry to check was not found in native/methods.go')\n    sys.exit(2)\nstart = text.index(old)\nfirst = text[:start].count('\\n') + 1\nlast = first + new.count('\\n')\nopen(path, 'w', encoding='utf-8', newline='').write(text.replace(old, new, 1))\nlines = new.split('\\n')\ntry:\n    ran = subprocess.run(['go', 'vet', '.'], cwd=copy, capture_output=True, text=True, timeout=600)\nexcept subprocess.TimeoutExpired:\n    print('go vet took more than ten minutes')\n    sys.exit(3)\nfinally:\n    shutil.rmtree(folder, ignore_errors=True)\nsaid = []\nfor line in (ran.stdout + ran.stderr).splitlines():\n    m = re.search(r'methods\\.go:(\\d+):(?:\\d+:)?\\s*(.*)', line)\n    if m and first <= int(m.group(1)) <= last:\n        n = int(m.group(1)) - first\n        said.append(lines[n].strip() + '   <- ' + m.group(2))\nif said:\n    print('\\n'.join(said[:12]))\n    sys.exit(1)\nprint('vetted: the method compiles' + ('' if ran.returncode == 0 else '; go vet found problems only outside it'))\n"
+}
+
+fn not_kept() -> RepairAt {
+  return {n: 0, hash: ""}
+}
+
+fn helpers_of(ran: Ran) -> Helpers {
+  var names: Text[] = []
+  var imports: Text[] = []
+  var used: Text[] = []
+  if ran.exit_code != 0 { return {names: [], imports: [], used: []} }
+  for line in ran.stdout.lines() {
+    if line.starts_with("NAMES ") { names = line.drop(6).words() }
+    else if line.starts_with("IMPORTS ") { imports = line.drop(8).words() }
+    else if line.starts_with("USED ") { used = used.append(line.drop(5).trim()) }
+  }
+  return {names: names, imports: imports, used: used}
+}
+
+// What the model is told of the package: the helpers it may call, and
+// the only packages it may name.
+fn helpers_said(helpers: Helpers) -> Text {
+  if helpers.names.is_empty() { return "" }
+  let most = if helpers.used.is_empty() { "" } else { "\nThe helpers the other methods call most, which exist in the package:\n" + (for one in helpers.used { "  " + one }).join("\n") }
+  let only = if helpers.imports.is_empty() { "" } else { "\nmethods.go imports only these packages: " + helpers.imports.join(", ") + ". Any other package, such as strconv or regexp, is not imported and must not be used." }
+  return most + only + "\nCall no function that is not in the package or in Go itself: a name that does not exist will not compile.\n"
+}
+
+fn with_helpers(task: Task, helpers: Helpers) -> Task {
+  let said = helpers_said(helpers)
+  if said.is_empty() { return task }
+  let end = "\nAnswer with only the lines of the body."
+  if not task.text.contains(end) { return {text: task.text + said} }
+  return {text: task.text.replace(end, said + end)}
+}
+
+fn go_own_names() -> Text[] {
+  return ["append", "cap", "clear", "close", "complex", "copy", "delete", "imag", "len", "make", "max", "min", "new", "panic", "print", "println", "real", "recover", "string", "bool", "byte", "rune", "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64", "uintptr", "float32", "float64", "complex64", "complex128", "error", "any", "if", "for", "switch", "return", "func", "go", "defer", "range", "select", "case", "else", "map", "chan", "struct", "interface", "var", "const", "type"]
+}
+
+fn go_packages() -> Text[] {
+  return ["strconv", "fmt", "sort", "regexp", "utf8", "bytes", "math", "big", "unicode", "strings", "slices", "maps", "errors", "os", "time", "rand", "bits"]
+}
+
+fn is_name_char(c: Text) -> Bool {
+  return c == "_" or c.lower() != c.upper() or "0123456789".contains(c)
+}
+
+// A line of Go without what its strings and its comment hold.
+fn go_code_only(line: Text) -> Text {
+  var out = ""
+  var quote = ""
+  var skip = false
+  let chars = line.chars()
+  for i in 0 until chars.length() {
+    let c = chars[i]
+    if skip { skip = false }
+    else if quote.is_empty() {
+      if c == "/" and i + 1 < chars.length() and chars[i + 1] == "/" { return out }
+      if c == "\"" or c == "'" or c == "`" {
+        quote = c
+        out = out + c
+      }
+      else { out = out + c }
+    } else {
+      if c == "\\" and quote != "`" { skip = true }
+      else if c == quote {
+        quote = ""
+        out = out + c
+      }
+    }
+  }
+  return out
+}
+
+// Each name in a line of Go that is called: the word right before a "(",
+// with what came before it ("." for a.b(), "" for b()).
+record GoCall { name: Text owner: Text }
+
+fn go_calls(line: Text) -> GoCall[] {
+  let chars = go_code_only(line).chars()
+  var found: GoCall[] = []
+  for i in 0 until chars.length() {
+    if chars[i] == "(" and i > 0 and is_name_char(chars[i - 1]) {
+      var start = i
+      while start > 0 and is_name_char(chars[start - 1]) { start -= 1 }
+      let name = chars.drop(start).take(i - start).join("")
+      var owner = ""
+      if start > 1 and chars[start - 1] == "." and is_name_char(chars[start - 2]) {
+        var from = start - 1
+        while from > 0 and is_name_char(chars[from - 1]) { from -= 1 }
+        owner = chars.drop(from).take(start - 1 - from).join("")
+      }
+      if not "0123456789".contains(name.take(1)) { found = found.append({name: name, owner: owner}) }
+    }
+  }
+  return found
+}
+
+// The names a body declares itself: x := ..., x, y := ..., var x ...,
+// and a for's own variables.
+fn go_declared(body: Text[]) -> Text[] {
+  var names: Text[] = []
+  for line in body {
+    let code = go_code_only(line).trim()
+    let left = if code.contains(":=") { code.split(":=").first().or("") } else { "" }
+    let named = if code.starts_with("var ") { code.drop(4).words().first().or("").split(",") } else { left.replace("for ", "").split(",") }
+    for one in named {
+      let name = one.trim()
+      if not name.is_empty() and (for c in name.chars() where not is_name_char(c) { c }).is_empty() { names = names.append(name) }
+    }
+  }
+  return names
+}
+
+// What the guard finds wrong with a body: calls to names the package does
+// not have, and packages methods.go does not import. Nothing when the
+// package's names could not be read.
+fn guard_problems(body: Text[], helpers: Helpers) -> Text[] {
+  if helpers.names.is_empty() { return [] }
+  let declared = go_declared(body)
+  var wrong: Text[] = []
+  for line in body {
+    for call in go_calls(line) {
+      if call.owner.is_empty() {
+        if not helpers.names.contains(call.name) and not go_own_names().contains(call.name) and not declared.contains(call.name) {
+          wrong = wrong.append(line.trim() + "   <- " + call.name + " does not exist in the package or in Go")
+        }
+      } else {
+        if go_packages().contains(call.owner) and not helpers.imports.contains(call.owner) and not declared.contains(call.owner) {
+          wrong = wrong.append(line.trim() + "   <- methods.go does not import " + call.owner)
+        }
+      }
+    }
+  }
+  return wrong.unique().take(12)
+}
+
+// A method's whole entry in methods.go, from its first line to its "}},".
+fn go_entry(methods: Text, name: Text) -> Text {
+  let lines = methods.replace("\r\n", "\n").split("\n")
+  var at = -1
+  for i in 0 until lines.length() {
+    if at < 0 and lines[i].starts_with("\t\"" + name + "\": {") { at = i }
+  }
+  if at < 0 { return "" }
+  for j in (at + 1) until lines.length() {
+    if lines[j] == "\t}}," { return lines.drop(at).take(j - at + 1).join("\n") }
+  }
+  return ""
+}
+
+fn fix_body(fix: GoFix) -> Text[] {
+  return without_rebinding(go_body(fix.code), fix.job.asked, fix.job.sig)
+}
+
+fn vet_args(fix: GoFix) -> Text[] {
+  let now = with_go_body(fix.table, fix.job.asked, fix.code)
+  return ["-c", vet_script(), go_entry(fix.table, fix.job.asked.name), go_entry(now, fix.job.asked.name)]
+}
+
+fn vetted_of(ran: Ran) -> Vetted {
+  let said = (ran.stdout.trim() + "\n" + ran.stderr.trim().take(600)).trim()
+  return {ok: ran.exit_code == 0, said: said}
+}
+
+fn guarded(fix: GoFix) -> Vetted {
+  return {ok: false, said: guard_problems(fix_body(fix), fix.helpers).join("\n")}
+}
+
+fn compile_failure(vetted: Vetted) -> Text {
+  return "It does not compile. The Go compiler, on the lines of your body:\n" + vetted.said.take(1500)
+}
+
+fn repair_task(fix: GoFix, vetted: Vetted) -> Task {
+  let told = go_body_task({asked: fix.job.asked, sig: fix.job.sig, failure: compile_failure(vetted)}, fix.python)
+  return with_helpers(told, fix.helpers)
+}
+
+// The next round, with the model's new body; an empty answer keeps the old.
+fn next_round(fix: GoFix, code: Text) -> GoFix {
+  let kept = if code.trim().is_empty() { fix.code } else { code }
+  return {job: fix.job, python: fix.python, helpers: fix.helpers, table: fix.table, code: kept, round: fix.round + 1}
+}
+
+fn repair_of(fix: GoFix, wrong: Vetted, next: GoFix, now: Vetted) -> Repair {
+  return {method: fix.job.asked.name, round: fix.round, broken: fix.code, wrong: wrong.said, fixed: next.code, passed: now.ok}
+}
+
+fn code_of(fix: GoFix) -> FileText {
+  return {text: fix.code}
+}
+
+workflow go_vet(fix: GoFix) -> Vetted {
+  vetted = match guard_problems(fix_body(fix), fix.helpers).is_empty() {
+    case true { call go_vet_run(fix) }
+    case _ { guarded(fix) }
+  }
+  require approval
+}
+
+workflow go_vet_run(fix: GoFix) -> Vetted {
+  ran    = execute runner.run_python(vet_args(fix))
+  vetted = vetted_of(ran)
+  require approval
+}
+
+// The body as it will be kept: the first one if it compiles, else the
+// model's repairs, at most go_rounds() of them.
+workflow go_checked(fix: GoFix) -> FileText {
+  first = call go_vet(fix)
+  code  = match first.ok or go_body(fix.code).is_empty() {
+    case true { code_of(fix) }
+    case _ { call go_repair(fix, first) }
+  }
+  require approval
+}
+
+workflow go_repair(fix: GoFix, wrong: Vetted) -> FileText {
+  asked = repair_task(fix, wrong)
+  again = use_model scribe(asked.text) retry 1 learn by asked.text otherwise {text: ""}
+  next  = next_round(fix, again.text)
+  now   = call go_vet(next)
+  kept  = execute keeper.keep_repair("go-repairs.kl", fix.job.asked.name, repair_of(fix, wrong, next, now)) otherwise not_kept()
+  code  = match now.ok or next.round > go_rounds() {
+    case true { code_of(next) }
+    case _ { call go_repair_last(next, now) }
+  }
+  require approval
+}
+
+workflow go_repair_last(fix: GoFix, wrong: Vetted) -> FileText {
+  asked = repair_task(fix, wrong)
+  again = use_model scribe(asked.text) retry 1 learn by asked.text otherwise {text: ""}
+  next  = next_round(fix, again.text)
+  now   = call go_vet(next)
+  kept  = execute keeper.keep_repair("go-repairs.kl", fix.job.asked.name, repair_of(fix, wrong, next, now)) otherwise not_kept()
+  code  = code_of(next)
   require approval
 }
 
@@ -3938,4 +4231,74 @@ test "Kosika's type names written as Go conversions become Go's own" {
   expect go_tidied("		return Bool(false)") == "		return bool(false)"
   expect go_tidied("return Text(x) + Number(y)") == "return string(x) + float64(y)"
   expect go_tidied("return isBool(x) || r.Bool(x)") == "return isBool(x) || r.Bool(x)"
+}
+
+test "the guard names helpers that do not exist and packages not imported" {
+  helpers: Helpers = {names: ["textOf", "toFloat", "bigInt", "runFail", "Value"], imports: ["strings", "unicode", "math"], used: []}
+  body = ["\t\tn, err := strconv.Atoi(text)", "\t\tparts := splitWords(text)", "\t\treturn strings.ToUpper(text)"]
+  wrong = guard_problems(body, helpers)
+  expect wrong.length() == 2
+  expect wrong[0].contains("methods.go does not import strconv")
+  expect wrong[1].contains("splitWords does not exist")
+  fine = ["\t\tup := func(s string) string { return strings.ToUpper(s) }", "\t\tif len(text) == 0 { runFail(\"empty (no text)\") }", "\t\t// call nothing(here)", "\t\treturn up(text) + string(rune(65))"]
+  expect guard_problems(fine, helpers).is_empty()
+  expect guard_problems(body, {names: [], imports: [], used: []}).is_empty()
+}
+
+test "a Go line's calls are read without its strings and its comment" {
+  calls = go_calls("x := strings.Repeat(\"f(\", n) + pad(y) // see more(z)")
+  expect calls.length() == 2
+  expect calls[0].name == "Repeat"
+  expect calls[0].owner == "strings"
+  expect calls[1].name == "pad"
+  expect calls[1].owner == ""
+  expect go_declared(["\t\ta, b := 1, 2", "\t\tvar total float64", "\t\tfor i, c := range text {"]) == ["a", "b", "total", "i", "c"]
+}
+
+test "the package's helpers are read and told to the model" {
+  ran: Ran = {exit_code: 0, stdout: "NAMES textOf runFail Value\nIMPORTS math strings unicode\nUSED textOf(v Value) string\nUSED runFail(message string)\n", stderr: ""}
+  helpers = helpers_of(ran)
+  expect helpers.names == ["textOf", "runFail", "Value"]
+  expect helpers.imports == ["math", "strings", "unicode"]
+  asked = method_asked({text: "add a Text method shout() that gives the text in capitals, giving a Text"})
+  told = with_helpers(go_body_task({asked: asked, sig: signature(asked), failure: ""}, ""), helpers)
+  expect told.text.contains("  textOf(v Value) string")
+  expect told.text.contains("methods.go imports only these packages: math, strings, unicode")
+  expect told.text.ends_with("Answer with only the lines of the body. No func line, no imports, no explanation.")
+  expect helpers_of({exit_code: 1, stdout: "NAMES x", stderr: ""}).names.is_empty()
+  expect helpers_script().contains("USED ")
+  expect vet_script().contains("'go', 'vet', '.'")
+}
+
+test "a method's entry is found whole, to be checked in a copy" {
+  methods = "var textMethods = map[string]method{\n\t\"shout\": {nil, func(r Value, a []Value) Value {\n\t\trunFail(\"shout is not written yet\")\n\t\treturn nil\n\t}},\n\t\"other\": {nil, func(r Value, a []Value) Value {\n\t\treturn nil\n\t}},\n}"
+  expect go_entry(methods, "shout") == "\t\"shout\": {nil, func(r Value, a []Value) Value {\n\t\trunFail(\"shout is not written yet\")\n\t\treturn nil\n\t}},"
+  expect go_entry(methods, "absent") == ""
+}
+
+test "a repair round is told the compiler's words and kept as broken, wrong and fixed" {
+  methods = "var textMethods = map[string]method{\n\t\"shout\": {nil, func(r Value, a []Value) Value {\n\t\trunFail(\"shout is not written yet\")\n\t\treturn nil\n\t}},\n}"
+  asked = method_asked({text: "add a Text method shout() that gives the text in capitals, giving a Text"})
+  helpers: Helpers = {names: ["textOf", "runFail", "Value"], imports: ["strings"], used: []}
+  fix: GoFix = {job: {asked: asked, sig: signature(asked), failure: ""}, python: "", helpers: helpers, table: methods, code: "return upperOf(text)", round: 1}
+  wrong = guarded(fix)
+  expect not wrong.ok
+  expect wrong.said.contains("upperOf does not exist")
+  told = repair_task(fix, wrong)
+  expect told.text.contains("It does not compile. The Go compiler, on the lines of your body:")
+  expect told.text.contains("upperOf does not exist")
+  expect told.text.contains("methods.go imports only these packages: strings")
+  next = next_round(fix, "return strings.ToUpper(text)")
+  expect next.round == 2
+  expect guard_problems(fix_body(next), helpers).is_empty()
+  expect next_round(fix, "  ").code == "return upperOf(text)"
+  kept = repair_of(fix, wrong, next, {ok: true, said: "vetted: the method compiles"})
+  expect kept.method == "shout"
+  expect kept.broken == "return upperOf(text)"
+  expect kept.fixed == "return strings.ToUpper(text)"
+  expect kept.passed
+  args = vet_args(next)
+  expect args[2].starts_with("\t\"shout\": {nil")
+  expect args[3].contains("return strings.ToUpper(text)")
+  expect vetted_of({exit_code: 1, stdout: "x   <- undefined: y", stderr: ""}).said == "x   <- undefined: y"
 }
