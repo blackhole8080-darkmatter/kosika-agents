@@ -3170,12 +3170,162 @@ fn std_report(asked: StdAsked, wrote: Result, ran: Ran) -> Result {
 
 workflow kosika_std(task: Task) -> Result {
   asked  = std_asked(task)
+  before = execute coder.read_file("kosika/std/" + asked.file) otherwise {text: ""}
+  result = match std_fillable(before.text, asked) {
+    case true { call std_filled({asked: asked, old: before.text, failure: ""}) }
+    case _ { call std_whole(task) }
+  }
+  require approval
+}
+
+// The model writes the whole function into the file, as before: for a
+// request whose signature the program cannot read.
+workflow std_whole(task: Task) -> Result {
+  asked  = std_asked(task)
   wrote  = call on_my_own(std_part(asked))
   source = execute coder.read_file("kosika/std/" + asked.file) otherwise {text: ""}
   copied = execute writer.save_all([{path: "kosika/std/" + asked.file, text: exported_too(source.text, asked.name), before: source.text, exists: true}, {path: "native/std/" + asked.file, text: exported_too(source.text, asked.name), before: "", exists: true}], "Exports " + asked.name + " and copies std/" + asked.file + " to the Go engine, which carries its own copy.")
   ran    = execute runner.run_python(["-c", both_tests_script(), "std/" + asked.file])
   result = std_report(asked, wrote, ran)
   require approval
+}
+
+// ---------------------------------------------------------------- std bodies
+//
+// As for a method: when the request says the function's whole signature,
+// "function NAME(a: T, ...) -> T", the program writes the function itself,
+// empty, names it in the export list, and writes a test from the request's
+// examples; the model is asked for the lines of its body alone, and the
+// program puts them in place. A model that writes a right body often cannot
+// write an edit that applies to a long file.
+
+record StdSig { ok: Bool params: Text result: Text }
+record StdJob { asked: StdAsked old: Text failure: Text }
+
+fn std_signature(asked: StdAsked) -> StdSig {
+  let none: StdSig = {ok: false, params: "", result: ""}
+  let open = asked.name + "("
+  if not asked.text.contains(open) { return none }
+  let after = asked.text.split(open).drop(1).join(open)
+  let params = after.split(")").first().or("").trim()
+  let rest = after.split(")").drop(1).join(")").trim()
+  if not rest.starts_with("->") { return none }
+  let result = rest.drop(2).trim().words().first().or("").trim_marks(".,;:")
+  if not ["Text", "Number", "Bool"].contains(result) { return none }
+  for part in params.split(",") {
+    if not part.trim().is_empty() and not part.contains(":") { return none }
+  }
+  return {ok: true, params: params, result: result}
+}
+
+fn std_default(result: Text) -> Text {
+  if result == "Text" { return "\"\"" }
+  if result == "Number" { return "0" }
+  return "false"
+}
+
+fn std_fillable(source: Text, asked: StdAsked) -> Bool {
+  return std_signature(asked).ok and not ("\n" + source.replace("\r\n", "\n")).contains("\nfn " + asked.name + "(")
+}
+
+// The examples as a Kosika test at the end of the file.
+fn std_examples_test(asked: StdAsked) -> Text {
+  let examples = examples_of(asked.text)
+  if examples.is_empty() { return "" }
+  let lines = for e in examples { "  expect " + e.call + " == " + e.value }
+  return "\ntest \"" + asked.name + " gives what its request's examples say\" {\n" + lines.join("\n") + "\n}\n"
+}
+
+// The file with the empty function before its first test (or at its end),
+// named in the export list, and the examples' test at the end.
+fn std_shelled(source: Text, asked: StdAsked) -> Text {
+  let sig = std_signature(asked)
+  let plain = source.replace("\r\n", "\n")
+  let stub = "fn " + asked.name + "(" + sig.params + ") -> " + sig.result + " {\n  return " + std_default(sig.result) + "\n}\n\n"
+  let at = ("\n" + plain).index_of("\ntest \"").or(default: -1)
+  let placed = if at < 0 { plain.trim_end() + "\n\n" + stub } else { plain.take(at) + stub + plain.drop(at) }
+  let now = exported_too(placed, asked.name).trim_end() + "\n" + std_examples_test(asked)
+  return if source.contains("\r\n") { now.replace("\n", "\r\n") } else { now }
+}
+
+// The file with the function's body replaced by the model's.
+fn with_std_body(source: Text, asked: StdAsked, answer: Text) -> Text {
+  let body = std_body(answer, asked.name)
+  if body.is_empty() { return source }
+  let lines = source.replace("\r\n", "\n").split("\n")
+  var at = -1
+  for i in 0 until lines.length() {
+    if at < 0 and lines[i].starts_with("fn " + asked.name + "(") { at = i }
+  }
+  if at < 0 { return source }
+  var end = -1
+  for j in (at + 1) until lines.length() {
+    if end < 0 and lines[j] == "}" { end = j }
+  }
+  if end < 0 { return source }
+  let now = lines.take(at + 1).concat(body).concat(lines.drop(end)).join("\n")
+  return if source.contains("\r\n") { now.replace("\n", "\r\n") } else { now }
+}
+
+// What the model wrote inside the function: its fn line and closing brace
+// left out if it wrote them.
+fn std_body(answer: Text, name: Text) -> Text[] {
+  let lines = unfenced_lines(answer)
+  var at = -1
+  for i in 0 until lines.length() {
+    if at < 0 and lines[i].trim().starts_with("fn " + name + "(") { at = i }
+  }
+  if at < 0 { return reindented(lines, "  ") }
+  var body: Text[] = []
+  var open = true
+  for line in lines.drop(at + 1) {
+    if open and line.trim() == "}" and indent_of(line) <= indent_of(lines[at]) { open = false }
+    if open { body = body.append(line) }
+  }
+  return reindented(body, "  ")
+}
+
+fn std_body_task(job: StdJob) -> Task {
+  let sig = std_signature(job.asked)
+  let shown = job.old.take(6000)
+  return {text: "Write the body of one Kosika function in Kosika's standard library, kosika/std/" + job.asked.file + ":\n\nfn " + job.asked.name + "(" + sig.params + ") -> " + sig.result + " {\n  // the body\n}\n\nWhat it does: " + job.asked.text.split("; examples:").first().or(job.asked.text) + "\n" + examples_said_std(job.asked) + "Kosika is its own language, not Python: `let x = ...` for a name that never changes, `var x = ...` and `x = ...` to change one; `if cond { ... } else { ... }`; `for x in list { ... }` and `for i in 0 until n { ... }`; a list is [a, b] and grows with `xs = xs.append(x)`; text methods include length(), lower(), upper(), trim(), split(sep), contains(part), starts_with(p), slice(start, end), chars(), words(), to_number() (gives a Number?, read with .or(default)); numbers have round(), floor(), min(x), max(x), to_text(); every path ends with `return`. Use only functions defined in the file below or built into Kosika.\n\nThe file as it is:\n```\n" + shown + "\n```\n" + failure_said(job.failure) + "\nAnswer with only the lines of the body. No fn line, no explanation."}
+}
+
+fn examples_said_std(asked: StdAsked) -> Text {
+  var said: Text[] = []
+  for e in examples_of(asked.text) { said = said.append("  " + e.call + " gives " + e.value) }
+  return if said.is_empty() { "" } else { "These must hold:\n" + said.join("\n") + "\n" }
+}
+
+workflow std_filled(job: StdJob) -> Result {
+  shell  = call save_body({path: "kosika/std/" + job.asked.file, old: job.old, now: std_shelled(job.old, job.asked), name: job.asked.name})
+  first  = call std_fill_once(job)
+  again  = match first.last.passed {
+    case true { as_is(first) }
+    case _ { call std_fill_once({asked: job.asked, old: job.old, failure: first.last.output}) }
+  }
+  result = again
+  require approval
+}
+
+// One body from the model, put in place, copied to the Go engine, and the
+// file's tests run in both engines.
+workflow std_fill_once(job: StdJob) -> Result {
+  source = execute coder.read_file("kosika/std/" + job.asked.file) otherwise {text: ""}
+  asked  = std_body_task({asked: job.asked, old: source.text, failure: job.failure})
+  code   = use_model scribe(asked.text) retry 1 learn by asked.text otherwise {text: ""}
+  saved  = call save_body({path: "kosika/std/" + job.asked.file, old: source.text, now: with_std_body(source.text, job.asked, code.text), name: job.asked.name})
+  now    = execute coder.read_file("kosika/std/" + job.asked.file) otherwise {text: ""}
+  copied = execute writer.save_all([{path: "native/std/" + job.asked.file, text: now.text, before: "", exists: true}], "Copies std/" + job.asked.file + " to the Go engine, which carries its own copy.")
+  ran    = execute runner.run_python(["-c", both_tests_script(), "std/" + job.asked.file])
+  result = std_filled_report(job.asked, ran)
+  require approval
+}
+
+fn std_filled_report(asked: StdAsked, ran: Ran) -> Result {
+  let ok = ran.exit_code == 0
+  let said = ran.stdout.take(1500) + ran.stderr.take(500)
+  return {text: "I wrote " + asked.name + " in std/" + asked.file + ": the program wrote the empty function, its export and a test from the request's examples, and the model wrote its body.\n\n" + (if ok { "The file's tests pass in both engines, and the Go engine's copy, native/std/" + asked.file + ", is the same file.\n" } else { "The file's tests do NOT pass in both engines, so this is not done:\n" }) + said, last: {task: asked.text, output: said, passed: ok, known: true}}
 }
 
 // ---------------------------------------------------------------- websites
@@ -4301,4 +4451,27 @@ test "a repair round is told the compiler's words and kept as broken, wrong and 
   expect args[2].starts_with("\t\"shout\": {nil")
   expect args[3].contains("return strings.ToUpper(text)")
   expect vetted_of({exit_code: 1, stdout: "x   <- undefined: y", stderr: ""}).said == "x   <- undefined: y"
+}
+
+test "a standard-library function is shelled from its signature, exported, and tested from its examples" {
+  asked = std_asked({text: "add an exported function hex_of(red: Number, green: Number, blue: Number) -> Text to kosika/std/designs_palette.kos that gives the colour as #rrggbb; examples: `hex_of(255, 0, 16)` is `\"#ff0010\"`"})
+  sig = std_signature(asked)
+  expect sig.ok
+  expect sig.params == "red: Number, green: Number, blue: Number"
+  expect sig.result == "Text"
+  file = "// colours\n\nexport [contrast]\n\nfn contrast(a: Text, b: Text) -> Number {\n  return 1\n}\n\ntest \"contrast\" {\n  expect contrast(\"a\", \"b\") == 1\n}\n"
+  expect std_fillable(file, asked)
+  shelled = std_shelled(file, asked)
+  expect shelled.contains("export [contrast, hex_of]")
+  expect shelled.contains("fn hex_of(red: Number, green: Number, blue: Number) -> Text {\n  return \"\"\n}\n\ntest \"contrast\"")
+  expect shelled.contains("expect hex_of(255, 0, 16) == \"#ff0010\"")
+  expect not std_fillable(shelled, asked)
+  filled = with_std_body(shelled, asked, "```kosika\nfn hex_of(red: Number, green: Number, blue: Number) -> Text {\n    let parts = [red, green, blue]\n    return \"#\"\n}\n```")
+  expect filled.contains("fn hex_of(red: Number, green: Number, blue: Number) -> Text {\n  let parts = [red, green, blue]\n  return \"#\"\n}\n")
+}
+
+test "a function whose signature cannot be read goes the old way" {
+  asked = std_asked({text: "add a function slug(text) to kosika/std/text.kos that makes a slug"})
+  expect not std_signature(asked).ok
+  expect not std_fillable("", asked)
 }
