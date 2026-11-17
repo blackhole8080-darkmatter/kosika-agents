@@ -145,6 +145,28 @@ def plan_names_real_files(copy: Path, text: str) -> tuple[int, list[str]]:
     return len(real), real
 
 
+def design_names(copy: Path) -> set[str]:
+    """Every name Kosika Designs exports."""
+
+    names: set[str] = set()
+    for library in (copy / "kosika" / "std").glob("designs*.kos"):
+        found = re.search(r"export\s*\[([^\]]*)\]", library.read_text(encoding="utf-8", errors="replace"))
+        if found:
+            names.update(n.strip() for n in found.group(1).split(",") if n.strip())
+    return names
+
+
+def plan_design_names(text: str) -> list[str]:
+    """The functions a plan says to build with: names in backticks on its
+    lines about Kosika Designs."""
+
+    named: list[str] = []
+    for line in text.splitlines():
+        if "design" in line.lower():
+            named += [n for n in re.findall(r"`([A-Za-z_][A-Za-z0-9_]*)(?:\(\))?`", line) if not n.startswith("designs")]
+    return named
+
+
 def main(run: Path, request: str, files: list[str]) -> int:
     run = run.resolve()
     copy = run / "kosika"
@@ -195,6 +217,12 @@ def main(run: Path, request: str, files: list[str]) -> int:
         elif name.endswith(".md") and "STUDIO" in name.upper():
             count, real = plan_names_real_files(copy, text)
             say(count >= 3, f"{name} names {count} files that are in Kosika today ({', '.join(real[:6])})")
+            named = plan_design_names(text)
+            if named:
+                known = design_names(copy)
+                made_up = sorted({n for n in named if n not in known})
+                say(len(made_up) <= len(set(named)) // 2,
+                    f"{name} builds with Kosika Designs functions that exist ({len(set(named)) - len(made_up)} of {len(set(named))}; not in Kosika Designs: {', '.join(made_up[:8])})")
     if not failed:
         print("design checks: nothing failed")
     return 1 if failed else 0

@@ -28,7 +28,8 @@ if ($Next) {
     Where-Object { (Get-Content (Join-Path $_.FullName "run.json") -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json).passed } |
     Sort-Object LastWriteTime
   if (-not $runs) { "No STUDIO_COMPONENTS.md has passed its checks yet; nothing to plan."; return }
-  $asked = (Get-ChildItem $daily -Filter "studio-todo*.md" | Get-Content -Raw) -join "`n"
+  # Only what passed or is being worked on counts as done; a failed request is planned again.
+  $asked = (Get-ChildItem $daily -Filter "studio-todo*.md" | Get-Content | Where-Object { $_ -match "^- \[(x|~)\] " }) -join "`n"
   $done = [regex]::Matches($asked, "app_assets/studio_([a-z0-9_]+)\.kos") | ForEach-Object { $_.Groups[1].Value.Replace("_", "-") }
   $plan = @{ p = @{ components = (Get-Content (Join-Path $runs[-1].FullName "kosika\STUDIO_COMPONENTS.md") -Raw); most = $Size; done = @($done) } }
   $ask = Join-Path $env:TEMP "studio-plan.json"

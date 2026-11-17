@@ -73,5 +73,15 @@ class Rules(unittest.TestCase):
             self.assertEqual((count, real), (1, ["desktop/README.md"]))
 
 
+    def test_a_plan_must_build_with_functions_kosika_designs_has(self) -> None:
+        with tempfile.TemporaryDirectory() as work:
+            std = Path(work) / "kosika" / "std"
+            std.mkdir(parents=True)
+            (std / "designs_motion.kos").write_text("export [motion_reveal, motion_spring]\n", encoding="utf-8")
+            self.assertEqual(check.design_names(Path(work)), {"motion_reveal", "motion_spring"})
+        named = check.plan_design_names("**Design Functions:** `designs_motion.kos` - `motion_reveal`, `fadeIn()`\nOther: `x`")
+        self.assertEqual(named, ["motion_reveal", "fadeIn"])
+
+
 if __name__ == "__main__":
     unittest.main()

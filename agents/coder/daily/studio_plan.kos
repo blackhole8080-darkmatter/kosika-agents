@@ -7,7 +7,7 @@
 //   kosika run studio_plan.kos --workflow plan --input plan.json
 //   plan.json: {"p": {"components": "<STUDIO_COMPONENTS.md>", "most": 3, "done": ["command-palette"]}}
 
-export [Planned, Plan, component_names, slug_of, request_for, plan_lines]
+export [Planned, Plan, component_names, what_of, slug_of, request_for, plan_lines]
 
 record Plan { components: Text most: Number done: Text[] }
 record Planned { lines: Text[] names: Text[] }
@@ -29,6 +29,25 @@ fn component_names(text: Text) -> Text[] {
   return out
 }
 
+// What a component is, in the coders' own words: the "**What:**" line under
+// its heading, or the first line of words there.
+fn what_of(text: Text, name: Text) -> Text {
+  var inside = false
+  for line in text.replace("\r\n", "\n").split("\n") {
+    let t = line.trim()
+    if t.starts_with("## ") {
+      inside = t.replace("*", "").ends_with(name)
+    } else {
+      if inside and t.length() > 0 and not t.starts_with("---") {
+        let words = t.replace("**What:**", "").replace("*", "").trim()
+        let cut = if words.length() > 160 { words.take(157) + "..." } else { words }
+        return cut.replace("\"", "'")
+      }
+    }
+  }
+  return name
+}
+
 // A file name from a component's name: "Command Palette" is "command-palette".
 fn slug_of(name: Text) -> Text {
   var out = ""
@@ -45,10 +64,9 @@ fn slug_of(name: Text) -> Text {
   return out
 }
 
-fn request_for(name: Text) -> Text {
-  let slug = slug_of(name)
-  let file = slug.replace("-", "_")
-  return f"- [ ] write a new file kosika/app_assets/studio_{file}.kos: the {name} component of Kosika Studio, as STUDIO_COMPONENTS.md describes it (read that section first, and kosika/std/designs_ui.kos and kosika/std/designs_palette.kos); start it with import \"std/designs_palette.kos\" and take every colour from palette_named(\"dark_matter\"); export a function {file}_html(state: Text) -> Text that gives the component's HTML with its styles inline, for the states \"empty\" and \"busy\" at least; add tests that each state gives HTML containing the palette's accent colour and the words that state shows, and that no colour is written by hand"
+fn request_for(name: Text, what: Text) -> Text {
+  let file = slug_of(name).replace("-", "_")
+  return f"- [ ] write a new file kosika/app_assets/studio_{file}.kos: Kosika Studio's {name} ({what}). Start it with import \"std/designs_palette.kos\"; export [{file}_html]; {file}_html(state: Text) -> Text gives a div of HTML with inline styles: background palette_named(\"dark_matter\").panel, text colour .ink, a 1px border in .accent, rounded 10px; for state \"empty\" it holds the words \"No {name.lower()} yet\", for any other state the words \"{name}\" and the state; write no colour by hand; add tests that \"empty\" gives its words and the accent colour, and that \"busy\" contains \"busy\""
 }
 
 fn plan_lines(p: Plan) -> Planned {
@@ -56,7 +74,7 @@ fn plan_lines(p: Plan) -> Planned {
   var names: Text[] = []
   for name in component_names(p.components) {
     if lines.length() < p.most and not p.done.contains(slug_of(name)) {
-      lines = lines.append(request_for(name))
+      lines = lines.append(request_for(name, what_of(p.components, name)))
       names = names.append(slug_of(name))
     }
   }
@@ -83,5 +101,13 @@ test "the plan takes the first few not yet done, each built on Kosika Designs" {
   expect planned.names == ["live-agents-panel", "run-timeline"]
   expect planned.lines[0].starts_with("- [ ] write a new file kosika/app_assets/studio_live_agents_panel.kos")
   expect planned.lines[0].contains("std/designs_palette.kos")
+  expect planned.lines[0].contains("No live agents panel yet")
   expect planned.lines[1].contains("run_timeline_html(state: Text)")
+}
+
+test "a component is described in the coders' own words" {
+  text = "## 1. Command Palette\n**What:** A searchable overlay for commands.\n**Why:** speed\n## 2. Run Timeline\n\nRuns on a line.\n"
+  expect what_of(text, "Command Palette") == "A searchable overlay for commands."
+  expect what_of(text, "Run Timeline") == "Runs on a line."
+  expect what_of(text, "Missing") == "Missing"
 }
