@@ -100,6 +100,22 @@ fn sd_task() -> Text {
   return "You are a patient tutor for a university student. Answer the question in plain words: four to seven short sentences, the key idea first, every technical word explained the first time it appears, and one concrete example. If notes from the student are given, use them where they help (their course, their deadlines, what they already know) and say so; never invent notes. A picture is drawn beside your answer by another tool, so do not describe a picture."
 }
 
+// Practice: "practise: induction proofs" asks for a problem to solve, with
+// hints that grow stronger, and never the answer, so the thinking stays the
+// student's. "hint" and "practice" start it too.
+fn sd_is_practice(m: StudyMsg) -> Bool {
+  return ["practise", "practice", "hint", "hints"].contains(sd_first(m.text))
+}
+
+fn sd_practice_task() -> Text {
+  return "You are a patient tutor who never gives the answer away. Set ONE practice problem on the topic the student names, at university level, small enough to solve in ten minutes. Then give exactly three hints, numbered Hint 1, Hint 2, Hint 3, each a little stronger than the one before, so the student can stop as soon as they can go on alone. Never state the final answer or a full solution, even partly; end by asking the student to send their answer to be checked. If notes from the student are given, pitch the problem at what they are studying."
+}
+
+// What the tutor is asked to do: practise without the answer, or explain.
+fn sd_task_for(m: StudyMsg) -> Text {
+  return if sd_is_practice(m) { sd_practice_task() } else { sd_task() }
+}
+
 fn sd_no_answer() -> TutorAnswer { return {text: ""} }
 
 // How Kosika Designs should draw it: a quiz or worked mathematics when
@@ -131,7 +147,7 @@ workflow keep_note(m: StudyMsg) -> Studied {
 workflow teach(m: StudyMsg) -> Studied {
   found  = recall jottings like sd_stems(m.text)
   notes  = sd_useful(found)
-  said   = use_model tutor(sd_task(), m.text, sd_notes_text(notes)) retry 1 otherwise sd_no_answer()
+  said   = use_model tutor(sd_task_for(m), m.text, sd_notes_text(notes)) retry 1 otherwise sd_no_answer()
   drawn  = call design(sd_drawing(m))
   out    = sd_answered(said, notes, drawn)
 }
@@ -166,4 +182,12 @@ test "a note and a question meet however their words are inflected" {
   expect sd_stem("class") == "class"
   expect sd_stem("optics") == "optic"
   expect sd_note({text: "remember: Electronics 1: lab report on transistors due 7 November"}).words.contains("transistor")
+}
+
+test "practice asks for hints and never the answer; anything else is explained" {
+  expect sd_is_practice({text: "practise: proofs by induction"})
+  expect sd_is_practice({text: "Hint me on Bell states"})
+  expect not sd_is_practice({text: "explain Bell states"})
+  expect sd_task_for({text: "practise: graphs"}).contains("Never state the final answer")
+  expect sd_task_for({text: "what is a graph"}) == sd_task()
 }

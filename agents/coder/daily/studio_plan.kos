@@ -1,0 +1,113 @@
+// The swarm's own to-do list, written in Kosika from what its coders
+// recommended. STUDIO_COMPONENTS.md ranks the components Kosika Studio
+// should add; this turns the first few into requests a coder can take, each
+// one small, built on Kosika Designs, and checkable by develop.kos's design
+// checks, so the swarm goes on to the next thing without being told.
+//
+//   kosika run studio_plan.kos --workflow plan --input plan.json
+//   plan.json: {"p": {"components": "<STUDIO_COMPONENTS.md>", "most": 3, "done": ["command-palette"]}}
+
+export [Planned, Plan, component_names, what_of, slug_of, request_for, plan_lines]
+
+record Plan { components: Text most: Number done: Text[] }
+record Planned { lines: Text[] names: Text[] }
+
+// The components in the order the coders ranked them: the "## 1. Name"
+// headings of STUDIO_COMPONENTS.md, without their numbers.
+fn component_names(text: Text) -> Text[] {
+  var out: Text[] = []
+  for line in text.replace("\r\n", "\n").split("\n") {
+    let t = line.trim()
+    if t.starts_with("## ") {
+      let rest = t.drop(3).trim()
+      let parts = rest.split(". ")
+      if parts.length() > 1 and parts[0].trim().length() <= 2 {
+        out = out.append(parts.drop(1).join(". ").replace("*", "").trim())
+      }
+    }
+  }
+  return out
+}
+
+// What a component is, in the coders' own words: the "**What:**" line under
+// its heading, or the first line of words there.
+fn what_of(text: Text, name: Text) -> Text {
+  var inside = false
+  for line in text.replace("\r\n", "\n").split("\n") {
+    let t = line.trim()
+    if t.starts_with("## ") {
+      inside = t.replace("*", "").ends_with(name)
+    } else {
+      if inside and t.length() > 0 and not t.starts_with("---") {
+        let words = t.replace("**What:**", "").replace("*", "").trim()
+        let cut = if words.length() > 160 { words.take(157) + "..." } else { words }
+        return cut.replace("\"", "'")
+      }
+    }
+  }
+  return name
+}
+
+// A file name from a component's name: "Command Palette" is "command-palette".
+fn slug_of(name: Text) -> Text {
+  var out = ""
+  var gap = false
+  for ch in name.lower().chars() {
+    if "abcdefghijklmnopqrstuvwxyz0123456789".contains(ch) {
+      if gap and out.length() > 0 { out = out + "-" }
+      out = out + ch
+      gap = false
+    } else {
+      gap = true
+    }
+  }
+  return out
+}
+
+fn request_for(name: Text, what: Text) -> Text {
+  let file = slug_of(name).replace("-", "_")
+  return f"- [ ] write a new file kosika/app_assets/studio_{file}.kos: Kosika Studio's {name} ({what}). Start it with import \"std/designs_palette.kos\"; export [{file}_html]; {file}_html(state: Text) -> Text gives a div of HTML with inline styles: background palette_named(\"dark_matter\").panel, text colour .ink, a 1px border in .accent, rounded 10px; for state \"empty\" it holds the words \"No {name.lower()} yet\", for any other state the words \"{name}\" and the state; write no colour by hand; add tests that \"empty\" gives its words and the accent colour, and that \"busy\" contains \"busy\""
+}
+
+fn plan_lines(p: Plan) -> Planned {
+  var lines: Text[] = []
+  var names: Text[] = []
+  for name in component_names(p.components) {
+    if lines.length() < p.most and not p.done.contains(slug_of(name)) {
+      lines = lines.append(request_for(name, what_of(p.components, name)))
+      names = names.append(slug_of(name))
+    }
+  }
+  return {lines: lines, names: names}
+}
+
+workflow plan(p: Plan) -> Planned {
+  planned = plan_lines(p)
+}
+
+test "the components are read in the order the coders ranked them" {
+  text = "# STUDIO_COMPONENTS.md\n\n## 1. Command Palette\nwhy\n## 2. **Live Agents Panel**\n## Notes\n## 3. Run Timeline\n"
+  expect component_names(text) == ["Command Palette", "Live Agents Panel", "Run Timeline"]
+}
+
+test "a name becomes a file name" {
+  expect slug_of("Command Palette") == "command-palette"
+  expect slug_of("  Diff Review Card (Keep/Drop) ") == "diff-review-card-keep-drop"
+}
+
+test "the plan takes the first few not yet done, each built on Kosika Designs" {
+  text = "## 1. Command Palette\n## 2. Live Agents Panel\n## 3. Run Timeline\n## 4. Model Picker\n"
+  planned = plan_lines({components: text, most: 2, done: ["command-palette"]})
+  expect planned.names == ["live-agents-panel", "run-timeline"]
+  expect planned.lines[0].starts_with("- [ ] write a new file kosika/app_assets/studio_live_agents_panel.kos")
+  expect planned.lines[0].contains("std/designs_palette.kos")
+  expect planned.lines[0].contains("No live agents panel yet")
+  expect planned.lines[1].contains("run_timeline_html(state: Text)")
+}
+
+test "a component is described in the coders' own words" {
+  text = "## 1. Command Palette\n**What:** A searchable overlay for commands.\n**Why:** speed\n## 2. Run Timeline\n\nRuns on a line.\n"
+  expect what_of(text, "Command Palette") == "A searchable overlay for commands."
+  expect what_of(text, "Run Timeline") == "Runs on a line."
+  expect what_of(text, "Missing") == "Missing"
+}

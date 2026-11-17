@@ -117,6 +117,35 @@ fn vet_args(run: Text, files: Text[]) -> Text[] {
   return ["-c", "import os, subprocess, sys; t = os.path.abspath('" + run + "/.gotmp'); os.makedirs(t, exist_ok=True); env = dict(os.environ, GOTMPDIR=t, GOCACHE=os.path.abspath('" + run + "/.gocache')); r = subprocess.run(['go', '-C', '" + run + "/kosika/native', 'vet', '.'], env=env, capture_output=True, text=True); print(r.stdout + r.stderr); sys.exit(r.returncode)"]
 }
 
+// Design work: a .kos file in Studio's app assets or named for an icon,
+// tokens, a theme or a design, or a Markdown plan for Studio. It is looked
+// at the way a person would (design_check.py beside this file): built on
+// Kosika Designs, with tests that pass, an icon drawn and its letter read,
+// a plan that names files Kosika really has.
+fn is_design(f: Text) -> Bool {
+  let base = f.split("/")[f.split("/").length() - 1]
+  if f.ends_with(".kos") {
+    if f.contains("app_assets/") { return true }
+    for w in ["icon", "token", "theme", "design", "brand", "palette"] {
+      if base.contains(w) { return true }
+    }
+  }
+  return f.ends_with(".md") and base.upper().contains("STUDIO")
+}
+
+fn design_files(files: Text[]) -> Text[] {
+  var out: Text[] = []
+  for f in files {
+    if is_design(f) { out = out.append(f) }
+  }
+  return out
+}
+
+fn design_args(run: Text, files: Text[]) -> Text[] {
+  if design_files(files).is_empty() { return ["-c", "print('no design work to look at')"] }
+  return [run + "/_judge/design_check.py", run, run + "/request.txt"].concat(design_files(files))
+}
+
 fn check_of(name: Text, ran: Ran) -> Check {
   let output = (ran.stdout + ran.stderr)
   let tail = if output.length() > 1500 { output.drop(output.length() - 1500) } else { output }
@@ -152,8 +181,9 @@ fn verdict(d: Done, checks: Check[]) -> Verdict {
   return {passed: passed, why: if passed { "passed its checks" } else { why }, checks: checks, report: lines.join("\n")}
 }
 
-fn checks_of(d: Done, tests: Ran, vet: Ran) -> Check[] {
+fn checks_of(d: Done, tests: Ran, vet: Ran, looked: Ran) -> Check[] {
   var out: Check[] = []
+  if not design_files(d.files).is_empty() { out = out.append(check_of("design checks (Kosika Designs, tests, the icon looked at)", looked)) }
   if not test_files(d.files).is_empty() { out = out.append(check_of("pytest " + test_files(d.files).join(" "), tests)) }
   if has_go(d.files) { out = out.append(check_of("go vet (the Go engine compiles)", vet)) }
   return out
@@ -162,7 +192,8 @@ fn checks_of(d: Done, tests: Ran, vet: Ran) -> Check[] {
 workflow main(d: Done) -> Verdict {
   tests   = execute checker.python(pytest_args(d.run, d.files))
   vet     = execute checker.python(vet_args(d.run, d.files))
-  judged  = verdict(d, checks_of(d, tests, vet))
+  looked  = execute checker.python(design_args(d.run, d.files))
+  judged  = verdict(d, checks_of(d, tests, vet, looked))
   written = execute checker.write_report(d.run + "/report.md", judged.report)
   kept    = execute checker.keep("coders.kl", d.run, {request: d.request, run: d.run, passed: judged.passed, why: judged.why, seconds: d.seconds, files: d.files})
   result  = judged
@@ -181,15 +212,15 @@ test "a change passes only when it changed files, finished, owned up to nothing,
   d: Done = {request: "add x", run: "2026-11-14-1", files: ["kosika/builtin_methods.py", "tests/test_x.py", "native/methods.go"], state: "done", said: "The tests pass. The engines agree.", seconds: 120, date: "2026-11-14"}
   ok: Ran = {exit_code: 0, stdout: "3 passed", stderr: ""}
   bad: Ran = {exit_code: 1, stdout: "1 failed", stderr: ""}
-  good = verdict(d, checks_of(d, ok, ok))
+  good = verdict(d, checks_of(d, ok, ok, ok))
   expect good.passed
   expect good.checks.length() == 2
   expect good.report.contains("passed its checks")
-  failing = verdict(d, checks_of(d, bad, ok))
+  failing = verdict(d, checks_of(d, bad, ok, ok))
   expect not failing.passed
   expect failing.why == "a check failed"
   expect failing.report.contains("FAIL pytest tests/test_x.py")
-  owned = verdict({request: d.request, run: d.run, files: d.files, state: "done", said: "I added it, but the engines do NOT agree", seconds: 9, date: d.date}, checks_of(d, ok, ok))
+  owned = verdict({request: d.request, run: d.run, files: d.files, state: "done", said: "I added it, but the engines do NOT agree", seconds: 9, date: d.date}, checks_of(d, ok, ok, ok))
   expect not owned.passed
   nothing = verdict({request: d.request, run: d.run, files: [], state: "done", said: "", seconds: 9, date: d.date}, [])
   expect nothing.why == "it changed no file"
@@ -199,4 +230,21 @@ test "a change passes only when it changed files, finished, owned up to nothing,
   expect vet_args("r1", d.files)[1].contains("'go', '-C', 'r1/kosika/native', 'vet', '.'")
   expect vet_args("r1", d.files)[1].contains("GOTMPDIR")
   expect vet_args("r1", ["kosika/a.py"]) == ["-c", "print('no Go to check')"]
+}
+
+test "design work is looked at, and a design that fails the look does not pass" {
+  expect is_design("kosika/app_assets/studio_icon.kos")
+  expect is_design("kosika/std/my_theme.kos")
+  expect is_design("STUDIO_COMPONENTS.md")
+  expect not is_design("kosika/std/text.kos")
+  expect not is_design("README.md")
+  expect design_args("r1", ["kosika/a.py"]) == ["-c", "print('no design work to look at')"]
+  expect design_args("r1", ["kosika/app_assets/studio_icon.kos", "kosika/a.py"]) == ["r1/_judge/design_check.py", "r1", "r1/request.txt", "kosika/app_assets/studio_icon.kos"]
+  d: Done = {request: "write studio_icon.kos", run: "r1", files: ["kosika/app_assets/studio_icon.kos"], state: "done", said: "done", seconds: 9, date: "2026-11-17"}
+  ok: Ran = {exit_code: 0, stdout: "PASS", stderr: ""}
+  bad: Ran = {exit_code: 1, stdout: "FAIL the icon's letter looks like K (0.63; it looks most like H, 0.87)", stderr: ""}
+  looked_bad = verdict(d, checks_of(d, ok, ok, bad))
+  expect not looked_bad.passed
+  expect looked_bad.report.contains("looks most like H")
+  expect verdict(d, checks_of(d, ok, ok, ok)).passed
 }
