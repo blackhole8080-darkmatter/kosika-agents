@@ -57,16 +57,30 @@ def load(path: Path) -> dict:
 AGAIN_IN = re.compile(r"try again in (?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)s)?", re.IGNORECASE)
 
 
+def reason_of(said: str) -> str:
+    """The service's own words for a refusal, short: its error message, or
+    the start of what it sent. Kept in the ledger so a refusal can be
+    understood later (Studio's Models page shows it)."""
+    try:
+        found = json.loads(said).get("error", {})
+        message = (found.get("message") or found.get("code") or "") if isinstance(found, dict) else str(found)
+    except (ValueError, AttributeError):
+        message = ""
+    return " ".join((message or said).split())[:160]
+
+
 def used_up_for(error: urllib.error.HTTPError) -> float:
     """Seconds until a daily allowance comes back, or 0 for a short limit.
 
     Groq says it in words, "tokens per day ... Please try again in 28m11s",
     and gives no Retry-After for it.
     """
-    try:
-        said = error.read().decode("utf-8", "replace")
-    except (OSError, ValueError):
-        return 0.0
+    said = getattr(error, "said", None)
+    if said is None:
+        try:
+            said = error.read().decode("utf-8", "replace")
+        except (OSError, ValueError):
+            return 0.0
     if "per day" not in said.lower():
         return 0.0
     found = AGAIN_IN.search(said)
@@ -177,6 +191,10 @@ class Router:
             try:
                 reply = self.ask(name, body)
             except urllib.error.HTTPError as error:
+                try:
+                    error.said = error.read().decode("utf-8", "replace")
+                except (OSError, ValueError):
+                    error.said = ""
                 wait = float(error.headers.get("retry-after") or self.config["cool_seconds"])
                 if error.code == 429:
                     # A day's allowance used up is not a burst: the service
@@ -185,7 +203,10 @@ class Router:
                     daily = used_up_for(error)
                     with self.lock:
                         self.cool[name] = time.time() + (daily if daily else min(wait, 120))
-                tried.append({"model": name, "status": error.code, "ms": int((time.time() - t0) * 1000)})
+                step = {"model": name, "status": error.code, "ms": int((time.time() - t0) * 1000)}
+                if error.code != 429 and error.said:
+                    step["why"] = reason_of(error.said)
+                tried.append(step)
                 continue
             except (urllib.error.URLError, TimeoutError, ValueError) as error:
                 tried.append({"model": name, "error": str(error)[:200], "ms": int((time.time() - t0) * 1000)})

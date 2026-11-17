@@ -145,8 +145,10 @@ from an environment, each pinned to a manifest.)
 ## Names and mascots
 
 Every agent has a name and a mascot, drawn and animated in Kosika
-(`mascots.kos`): Kosi the sun (Kosika), Nova the fox (coder-1), Quark the
-owl (coder-2) and Comet the hare (scout). Each is drawn in its agent's own
+(`mascots.kos`), Sanskrit names with modern faces: Kosi the sun (Kosika),
+Shilpi the fox (coder-1, the craftsman), Drishti the owl (coder-2, sight),
+Yantra the bot (coder-3, the machine), Setu the cat (coder-4, the bridge) and
+Vayu the hare (scout, the wind). Each is drawn in its agent's own
 colour and moves with how the agent is doing: it breathes and blinks when
 idle, bobs with a question bubble while it waits for your yes, twitches its
 ears while typing, hops when a job is done and droops when one is not. The
@@ -160,7 +162,7 @@ name; give it one by adding a line to `mascots()`.
 
 `kosika serve-mcp` serves a Kosika program's workflows as MCP tools, so any
 AI app that speaks MCP (Claude Desktop, an IDE, another Kosika program) can
-ask Nova, Quark, Comet or Kosi to do a job:
+ask Shilpi, Drishti, Yantra, Setu, Vayu or Kosi to do a job:
 
     kosika serve-mcp plan.kos --only go --only note -- --allow-shell --allow-folder . --approve-in asks --model kosika-virtual --model-url http://127.0.0.1:8791/v1 --model-protocol openai
 
@@ -176,3 +178,14 @@ terminal belongs to the app. In an app's MCP settings it is:
 
 Kosika programs can use each other the same way:
 `kosika run other.kos --mcp hands="kosika serve-mcp plan.kos --only go -- ..."`.
+
+## The overlay: every agent at work, on one screen
+
+[overlay.py](overlay.py) shows each agent at work with its own pointer (its mascot's name on the tag), the words it is typing in a bubble under the tag, and a soft light along the screen's edges in the agents' colours. With several agents the colours travel round the edges and blend into each other; when one starts or stops the light changes over smoothly, and when all have stopped it fades out. Nothing in it takes a click or a key.
+
+The look is decided in Kosika by [overlay.kos](overlay.kos) (colour from the kit, tag from the mascot, arrow from cursor.kos, and how the light breathes, fades and travels). An agent says it is working by writing `~/.kosika/glow/NAME.json` (`name`, `at`, and optionally `doing`, `typing`, `x`, `y`); a beat older than six seconds means it stopped.
+
+    python overlay.py                       # stays up while agents come and go
+    python overlay.py --beat coder-1 --doing "fixing the parser" --typing "fn parse("
+    python demo_overlay.py                  # three agents for 40 seconds
+

@@ -2107,11 +2107,15 @@ fn after_registering(tried: Result, report: Result) -> Result {
 
 fn python_part(asked: MethodAsked, shell: Text) -> Task {
   let table = if asked.kind == "array" { "beside the other ANY_ARRAY methods" } else { "beside the other \"" + asked.kind + "\" methods" }
-  let tests = "Write tests for it in tests/test_" + asked.name + ".py in the style of tests/test_short_methods.py, running small Kosika programs that call it. Test only calls that work and the values they give, three to six of them, edge cases included; write no test of an error or a wrong type, and no helper the method does not use"
+  let tests = if examples_of(asked.text).is_empty() { tests_wanted(asked) } else { "The tests for it are already written, from the request's examples, in a file of their own: write no tests, only the method, so that they pass" }
   if shell.starts_with("wrote def _") {
     return {text: asked.text + ". In kosika/builtin_methods.py the program has already " + shell.trim() + ". Write the body of _" + asked.name + ": replace its one line `raise RuntimeError(\"" + asked.name + " is not written yet\")` with the code, and change nothing else in the file. " + tests}
   }
-  return {text: asked.text + ". Do it in kosika/builtin_methods.py, as one Method in the METHODS table " + table + ", with a helper function above the table only if it needs more than one line. Write tests for it in tests/test_" + asked.name + ".py in the style of tests/test_short_methods.py, running small Kosika programs that call it. Test only calls that work and the values they give, three to six of them, edge cases included; write no test of an error or a wrong type, and no helper the method does not use"}
+  return {text: asked.text + ". Do it in kosika/builtin_methods.py, as one Method in the METHODS table " + table + ", with a helper function above the table only if it needs more than one line. " + tests}
+}
+
+fn tests_wanted(asked: MethodAsked) -> Text {
+  return "Write tests for it in tests/test_" + asked.name + ".py in the style of tests/test_short_methods.py, running small Kosika programs that call it. Test only calls that work and the values they give, three to six of them, edge cases included; write no test of an error or a wrong type, and no helper the method does not use"
 }
 
 // The lines of the Python engine that define the method, which the Go one
@@ -2146,7 +2150,699 @@ fn docs_part(asked: MethodAsked) -> Task {
 // called with sample arguments too, a few of each type it takes, and a
 // call that fails must fail in both engines.
 fn agree_script() -> Text {
-  return "import itertools, os, re, subprocess, sys, tempfile\nname, kind = sys.argv[1], sys.argv[2]\nsource = open('kosika/builtin_methods.py', encoding='utf-8').read()\nfound = re.search(r'Method\\(\\s*\"' + kind + r'\",\\s*\"' + name + r'\",\\s*\\((.*?)\\),\\s*\"([^\"]+)\"', source, re.S)\nif not found:\n    print('the Python engine has no Method line for ' + kind + ' ' + name)\n    sys.exit(1)\nparams = re.findall(r'\\(\\s*\"(\\w+)\",\\s*\"([^\"]+)\"\\s*\\)', found.group(1))\nresult = found.group(2)\nvalues = {'Text': ['\"\"', '\"abc\"', '\" 12 \"', '\"banana\"', '\"Hello World\"'], 'Number': ['0', '-2.5', '7', '3'], 'Bool': ['true', 'false']}\nreceivers = values.get(kind)\nchoices = [values.get(t) for _, t in params]\nif receivers is None or None in choices:\n    print('skipped: no samples for ' + kind + ' or one of its parameters')\n    sys.exit(0)\nargument_samples = {'Text': ['\"a\"', '\"an\"', '\"zz\"', '\"\"'], 'Number': ['0', '1', '2'], 'Bool': ['true']}\ncombos = list(itertools.product(*[argument_samples[t] for _, t in params]))[:6] or [()]\ncalls = []\nfor receiver in receivers:\n    for combo in combos:\n        args = ', '.join(f'{p}: {v}' for (p, _), v in zip(params, combo))\n        calls.append(f'({receiver}).{name}({args})')\nfolder = tempfile.mkdtemp()\nengine = os.path.join(folder, 'kosika-native.exe' if os.name == 'nt' else 'kosika-native')\nbuilt = subprocess.run(['go', '-C', os.path.join(os.getcwd(), 'native'), 'build', '-o', engine, '.'], capture_output=True, text=True)\nif built.returncode != 0:\n    print('the Go engine does not build: ' + built.stderr[-1500:])\n    sys.exit(1)\n\n\ndef run_both(call):\n    program = 'record Out { v: ' + result + ' }\\nfn f() -> Out {\\n  return {v: ' + call + '}\\n}\\nworkflow main() -> Out { out = f() }\\n'\n    path = os.path.join(folder, 'agree.kos')\n    open(path, 'w', encoding='utf-8').write(program)\n    py = subprocess.run([sys.executable, '-m', 'kosika.cli', 'run', path], capture_output=True, text=True, cwd=folder,\n                        env=dict(os.environ, PYTHONPATH=os.getcwd()))\n    go = subprocess.run([engine, 'run', path], capture_output=True, text=True, cwd=folder)\n    said = lambda ran: (ran.stdout.strip().splitlines() or ['FAILED'])[0] if ran.returncode == 0 else 'FAILED'\n    return said(py), said(go)\n\n\napart = 0\nfor call in calls:\n    py, go = run_both(call)\n    same = py == go\n    apart += 0 if same else 1\n    print(('same  ' if same else 'APART ') + call + '  python: ' + py + '  go: ' + go)\nsys.exit(0 if apart == 0 else 1)\n"
+  return "import itertools, os, re, subprocess, sys, tempfile\nname, kind = sys.argv[1], sys.argv[2]\nsys.path.insert(0, os.getcwd())\nfrom kosika.checker import check\nfrom kosika.parser import parse\nfrom kosika.runtime import run\nsource = open('kosika/builtin_methods.py', encoding='utf-8').read()\nfound = re.search(r'Method\\(\\s*\"' + kind + r'\",\\s*\"' + name + r'\",\\s*\\((.*?)\\),\\s*\"([^\"]+)\"', source, re.S)\nif not found:\n    print('the Python engine has no Method line for ' + kind + ' ' + name)\n    sys.exit(1)\nparams = re.findall(r'\\(\\s*\"(\\w+)\",\\s*\"([^\"]+)\"\\s*\\)', found.group(1))\nresult = found.group(2)\nvalues = {'Text': ['\"\"', '\"abc\"', '\" 12 \"', '\"banana\"', '\"Hello World\"'], 'Number': ['0', '-2.5', '7', '3'], 'Bool': ['true', 'false']}\nreceivers = values.get(kind)\nchoices = [values.get(t) for _, t in params]\nif receivers is None or None in choices:\n    print('skipped: no samples for ' + kind + ' or one of its parameters')\n    sys.exit(0)\nargument_samples = {'Text': ['\"a\"', '\"an\"', '\"zz\"', '\"\"'], 'Number': ['0', '1', '2'], 'Bool': ['true']}\ncombos = list(itertools.product(*[argument_samples[t] for _, t in params]))[:6] or [()]\ncalls = []\nfor receiver in receivers:\n    for combo in combos:\n        args = ', '.join(f'{p}: {v}' for (p, _), v in zip(params, combo))\n        calls.append(f'({receiver}).{name}({args})')\nfolder = tempfile.mkdtemp()\nengine = os.path.join(folder, 'kosika-native.exe' if os.name == 'nt' else 'kosika-native')\nbuilt = subprocess.run(['go', '-C', os.path.join(os.getcwd(), 'native'), 'build', '-o', engine, '.'], capture_output=True, text=True)\nif built.returncode != 0:\n    print('the Go engine does not build: ' + built.stderr[-1500:])\n    sys.exit(1)\n\n\ndef run_both(call):\n    program = 'record Out { v: ' + result + ' }\\nfn f() -> Out {\\n  return {v: ' + call + '}\\n}\\nworkflow main() -> Out { out = f() }\\n'\n    path = os.path.join(folder, 'agree.kos')\n    open(path, 'w', encoding='utf-8').write(program)\n    try:\n        made = parse(program)\n        check(made)\n        py = str(run(made, 'main', None, inputs={}))\n    except Exception:\n        py = 'FAILED'\n    go = subprocess.run([engine, 'run', path], capture_output=True, text=True, encoding='utf-8', errors='replace', cwd=folder)\n    said = lambda ran: (ran.stdout.strip().splitlines() or ['FAILED'])[0] if ran.returncode == 0 else 'FAILED'\n    return py, said(go)\n\n\napart = 0\nfor call in calls:\n    py, go = run_both(call)\n    same = py == go\n    apart += 0 if same else 1\n    print(('same  ' if same else 'APART ') + call + '  python: ' + py + '  go: ' + go)\nsys.exit(0 if apart == 0 else 1)\n"
+}
+
+// ---------------------------------------------------------------- examples
+//
+// A request may end with examples, each a call and the value it gives, in
+// backticks: `examples: `"x".surround("<", ">")` is `"<x>"`, `"".surround("a", "b")` is `"ab"``.
+// The program writes the tests from them, exactly, so a small model is never
+// asked to invent what the method should give: it only writes the body.
+
+record Example { call: Text value: Text }
+
+fn examples_of(text: Text) -> Example[] {
+  let at = text.lower().index_of("examples:").or(default: -1)
+  if at < 0 { return [] }
+  let spans = text.drop(at).split("`")
+  var found: Example[] = []
+  for i in 0 until spans.length() {
+    if i % 4 == 1 and i + 2 < spans.length() {
+      let call = spans[i].trim()
+      let value = spans[i + 2].trim()
+      if not call.is_empty() and not value.is_empty() { found = found.append({call: call, value: value}) }
+    }
+  }
+  return found
+}
+
+// A Kosika value as Python writes it.
+fn py_value(value: Text) -> Text {
+  if value == "true" { return "True" }
+  if value == "false" { return "False" }
+  return value
+}
+
+// A Kosika call as a Python string literal.
+fn py_quoted(call: Text) -> Text {
+  return "'" + call.replace("\\", "\\\\").replace("'", "\\'") + "'"
+}
+
+fn examples_test(asked: MethodAsked, sig: Signature, examples: Example[]) -> Text {
+  let head = "\"\"\"The " + asked.kind + " method " + asked.name + ", tested on the examples its request gave.\"\"\"\n\nfrom __future__ import annotations\n\nimport unittest\nfrom typing import Any\n\nfrom kosika.checker import check\nfrom kosika.parser import parse\nfrom kosika.runtime import run\n\n\ndef value_of(expression: str, type_name: str) -> Any:\n    source = (\n        f\"record Out {{ value: {type_name} }}\\n\"\n        f\"fn f() -> Out {{\\nreturn {{value: {expression}}}\\n}}\\n\"\n        \"workflow main() -> Out { out = f() }\\n\"\n    )\n    program = parse(source)\n    check(program)\n    return run(program, \"main\", None, inputs={})[\"value\"]\n\n\nclass ExampleTests(unittest.TestCase):\n    def test_the_examples_give_what_the_request_says(self) -> None:\n"
+  var lines: Text[] = []
+  for e in examples {
+    lines = lines.append("        self.assertEqual(value_of(" + py_quoted(e.call) + ", \"" + sig.result + "\"), " + py_value(e.value) + ")")
+  }
+  return head + lines.join("\n") + "\n\n\nif __name__ == \"__main__\":\n    unittest.main()\n"
+}
+
+record ExamplesJob { asked: MethodAsked text: Text }
+
+workflow write_examples_test(job: ExamplesJob) -> Saved {
+  saved = match job.text.is_empty() {
+    case true { nothing_saved() }
+    case _ { call save_examples_test(job) }
+  }
+  require approval
+}
+
+// The examples' tests, kept as the program wrote them even if a model
+// wrote over them, then run; one mend when they fail, then run again.
+record Checking { asked: MethodAsked task: Task tried: Result }
+record Keeping { asked: MethodAsked text: Text now: Text }
+
+workflow examples_checked(job: Checking) -> Result {
+  now    = execute coder.read_file(examples_path(job.asked)) otherwise {text: ""}
+  kept   = call keep_examples_test({asked: job.asked, text: examples_text(job.asked, signature(job.asked)), now: now.text})
+  tested = call run_tests(examples_work(job.asked))
+  report = worked_on(job.task, examples_work(job.asked), tested)
+  fixed  = match report.last.passed {
+    case true { as_is(report) }
+    case _ { call fill_py({asked: job.asked, sig: signature(job.asked), failure: report.last.output}) }
+  }
+  later  = execute coder.read_file(examples_path(job.asked)) otherwise {text: ""}
+  again  = call keep_examples_test({asked: job.asked, text: examples_text(job.asked, signature(job.asked)), now: later.text})
+  final  = call run_tests(examples_work(job.asked))
+  result = after_examples(job.tried, worked_on(job.task, examples_work(job.asked), final))
+  require approval
+}
+
+workflow keep_examples_test(job: Keeping) -> Saved {
+  saved = match job.now == job.text {
+    case true { nothing_saved() }
+    case _ { call rewrite_examples_test(job) }
+  }
+  require approval
+}
+
+workflow rewrite_examples_test(job: Keeping) -> Saved {
+  saved = execute writer.save_all([{path: examples_path(job.asked), text: job.text, before: job.now, exists: not job.now.is_empty()}], "The tests from the request's examples, as the program wrote them.")
+  require approval
+}
+
+fn examples_path(asked: MethodAsked) -> Text {
+  return "tests/test_" + asked.name + ".py"
+}
+
+fn examples_work(asked: MethodAsked) -> Work {
+  return {summary: "The tests written from the request's examples.", did: ["save_all " + examples_path(asked)]}
+}
+
+fn after_examples(tried: Result, report: Result) -> Result {
+  return {text: tried.text + "\n\nThe tests written from the request's examples:\n" + report.text, last: report.last}
+}
+
+workflow save_examples_test(job: ExamplesJob) -> Saved {
+  saved = execute writer.save_all([{path: "tests/test_" + job.asked.name + ".py", text: job.text, before: "", exists: false}], "Tests for " + job.asked.name + ", written from the examples in the request.")
+  require approval
+}
+
+fn examples_text(asked: MethodAsked, sig: Signature) -> Text {
+  let examples = examples_of(asked.text)
+  if examples.is_empty() or not sig.ok { return "" }
+  return examples_test(asked, sig, examples)
+}
+
+// ---------------------------------------------------------------- bodies
+//
+// When the program has written an empty function, the model is asked for
+// its body alone, as plain code, and the program puts it in place. A small
+// model that writes a right body often cannot write an edit that applies to
+// the file; with no edit to write, that cannot fail.
+
+record Filling { asked: MethodAsked sig: Signature failure: Text }
+record BodySave { path: Text old: Text now: Text name: Text }
+record GoAgain { asked: MethodAsked fill: Bool python: Text agreed: Ran }
+
+fn py_fillable(before: Text, asked: MethodAsked, sig: Signature) -> Bool {
+  return not examples_of(asked.text).is_empty() and py_shelled(before, asked, sig) != before
+}
+
+fn go_fillable(before: Text, asked: MethodAsked) -> Bool {
+  let sig = signature(asked)
+  return sig.ok and go_shelled(before, asked, sig) != before
+}
+
+fn indent_of(line: Text) -> Number {
+  return line.length() - line.trim_start().length()
+}
+
+// The answer without the lines of a ``` fence around it.
+fn unfenced_lines(answer: Text) -> Text[] {
+  let lines = answer.replace("\r\n", "\n").split("\n")
+  let kept = for line in lines where not line.trim().starts_with("```") { line }
+  return kept
+}
+
+// The lines moved left as far as they go together, then indented by `pad`,
+// with no empty lines at either end.
+fn reindented(given: Text[], pad: Text) -> Text[] {
+  let lines = first_aligned(given)
+  var least = -1
+  for line in lines {
+    if not line.trim().is_empty() {
+      let n = indent_of(line.replace("\t", "    "))
+      if least < 0 or n < least { least = n }
+    }
+  }
+  if least < 0 { return [] }
+  var out: Text[] = []
+  for line in lines {
+    let flat = line.replace("\t", "    ").trim_end()
+    out = out.append(if flat.is_empty() { "" } else { pad + flat.drop(least) })
+  }
+  var first = 0
+  var last = out.length() - 1
+  for i in 0 until out.length() {
+    if out[i].is_empty() and first == i { first = i + 1 }
+  }
+  for i in 0 until out.length() {
+    let j = out.length() - 1 - i
+    if out[j].is_empty() and last == j { last = j - 1 }
+  }
+  if first > last { return [] }
+  return out.drop(first).take(last - first + 1)
+}
+
+// A model often writes a body's first line at the margin and the rest
+// indented, as if the def line were still above it: the first line is then
+// moved in to where the others begin.
+fn first_aligned(lines: Text[]) -> Text[] {
+  var first = -1
+  for i in 0 until lines.length() {
+    if first < 0 and not lines[i].trim().is_empty() { first = i }
+  }
+  if first < 0 or indent_of(lines[first].replace("	", "    ")) > 0 { return lines }
+  var rest = -1
+  for line in lines.drop(first + 1) {
+    if not line.trim().is_empty() {
+      let n = indent_of(line.replace("	", "    "))
+      if rest < 0 or n < rest { rest = n }
+    }
+  }
+  if rest <= 0 { return lines }
+  return lines.take(first).concat([" ".repeat(rest) + lines[first]]).concat(lines.drop(first + 1))
+}
+
+// The body a model wrote for a Python function: what follows its def line
+// when it wrote one, up to the next line at the left margin.
+fn py_body(answer: Text, name: Text) -> Text[] {
+  let lines = unfenced_lines(answer)
+  var at = -1
+  for i in 0 until lines.length() {
+    if at < 0 and lines[i].trim().starts_with("def _" + name + "(") { at = i }
+  }
+  if at < 0 { return reindented(lines, "    ") }
+  var body: Text[] = []
+  var open = true
+  for line in lines.drop(at + 1) {
+    if open and not line.trim().is_empty() and indent_of(line) == 0 { open = false }
+    if open { body = body.append(line) }
+  }
+  return reindented(body, "    ")
+}
+
+// builtin_methods.py with the function's body replaced by the model's; as
+// it was when there is no such function or no body in the answer.
+fn with_py_body(source: Text, asked: MethodAsked, answer: Text) -> Text {
+  let body = py_body(answer, asked.name)
+  if body.is_empty() { return source }
+  let plain = source.replace("\r\n", "\n")
+  let lines = plain.split("\n")
+  var at = -1
+  for i in 0 until lines.length() {
+    if at < 0 and lines[i].starts_with("def _" + asked.name + "(") { at = i }
+  }
+  if at < 0 { return source }
+  var end = lines.length()
+  for j in (at + 1) until lines.length() {
+    if end == lines.length() and not lines[j].trim().is_empty() and indent_of(lines[j]) == 0 { end = j }
+  }
+  let now = lines.take(at + 1).concat(body).concat(["", ""]).concat(lines.drop(end)).join("\n")
+  return if source.contains("\r\n") { now.replace("\n", "\r\n") } else { now }
+}
+
+// The body a model wrote for a Go method entry: what is inside its func
+// when it wrote the func line, else all of it.
+fn go_body(answer: Text) -> Text[] {
+  let lines = unfenced_lines(answer)
+  var at = -1
+  for i in 0 until lines.length() {
+    if at < 0 and lines[i].contains("func(r Value, a []Value) Value {") { at = i }
+  }
+  if at < 0 { return reindented(lines, "\t\t") }
+  var body: Text[] = []
+  var open = true
+  for line in lines.drop(at + 1) {
+    let t = line.trim()
+    if open and (t == "}}," or t == "}}" or (t == "}" and indent_of(line) <= indent_of(lines[at]))) { open = false }
+    if open { body = body.append(line) }
+  }
+  return reindented(body, "\t\t")
+}
+
+fn with_go_body(methods: Text, asked: MethodAsked, answer: Text) -> Text {
+  let bound = go_bindings(asked, signature(asked))
+  let body = (for line in without_rebinding(go_body(answer), asked, signature(asked)) { go_tidied(line) })
+  if body.is_empty() { return methods }
+  let plain = methods.replace("\r\n", "\n")
+  let lines = plain.split("\n")
+  var at = -1
+  for i in 0 until lines.length() {
+    if at < 0 and lines[i].starts_with("\t\"" + asked.name + "\": {") { at = i }
+  }
+  if at < 0 { return methods }
+  var end = -1
+  for j in (at + 1) until lines.length() {
+    if end < 0 and lines[j] == "\t}}," { end = j }
+  }
+  if end < 0 { return methods }
+  let now = lines.take(at + 1).concat(bound).concat(body).concat(lines.drop(end)).join("\n")
+  return if methods.contains("\r\n") { now.replace("\n", "\r\n") } else { now }
+}
+
+// A model writes Kosika's type names as if they were Go conversions,
+// Bool(false) or Text(x); the Go engine has no such names, so they become
+// Go's own: bool, string and float64.
+fn go_tidied(line: Text) -> Text {
+  var out = line
+  for pair in ["Bool(=bool(", "Text(=string(", "Number(=float64("] {
+    let wrong = pair.split("=")[0]
+    let right = pair.split("=")[1]
+    let parts = out.split(wrong)
+    var joined = parts[0]
+    for i in 1 until parts.length() {
+      let before = joined.drop(joined.length() - 1)
+      let inside_name = before != "" and "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.".contains(before)
+      joined = joined + (if inside_name { wrong } else { right }) + parts[i]
+    }
+    out = joined
+  }
+  return out
+}
+
+// How the Go engine reads a value of a Kosika type into a Go one, or "" for
+// a type it has no plain reading of.
+fn go_read(type_name: Text, from: Text) -> Text {
+  if type_name == "Text" { return "textOf(" + from + ")" }
+  if type_name == "Number" { return "toFloat(" + from + ")" }
+  if type_name == "Bool" { return from + ".(bool)" }
+  return ""
+}
+
+// The variables the program declares at the top of a Go method's body,
+// named as in the Python function: the value the method is called on, then
+// each argument. A model that wrote them the wrong way round no longer can.
+fn go_bindings(asked: MethodAsked, sig: Signature) -> Text[] {
+  var lines: Text[] = []
+  let own = go_read(asked.kind, "r")
+  if not own.is_empty() { lines = lines.append("\t\t" + receiver_name(asked.kind) + " := " + own).append("\t\t_ = " + receiver_name(asked.kind)) }
+  for i in 0 until sig.params.length() {
+    let p = sig.params[i]
+    let read = go_read(p.type, "a[" + i.to_text() + "]")
+    if not read.is_empty() { lines = lines.append("\t\t" + p.name + " := " + read).append("\t\t_ = " + p.name) }
+  }
+  return lines
+}
+
+// The model's body without lines that declare a bound name again.
+fn without_rebinding(body: Text[], asked: MethodAsked, sig: Signature) -> Text[] {
+  var names: Text[] = [receiver_name(asked.kind)]
+  for p in sig.params { names = names.append(p.name) }
+  let kept = for line in body where not (names.contains(line.trim().split(" ").first().or("")) and (line.contains(":= textOf(") or line.contains(":= toFloat(") or line.contains(".(bool)") or line.trim().starts_with("_ ="))) { line }
+  return kept
+}
+
+fn go_returns(result: Text) -> Text {
+  if result == "Text" { return "a Go string (never bigInt of it)" }
+  if result == "Bool" { return "a Go bool" }
+  if result == "Number" { return "bigInt(n) when the answer is a whole number held in an int n, else a float64" }
+  return "the value"
+}
+
+fn examples_said(asked: MethodAsked) -> Text {
+  var said: Text[] = []
+  for e in examples_of(asked.text) { said = said.append("  " + e.call + " gives " + e.value) }
+  return if said.is_empty() { "" } else { "\nIn Kosika these must hold:\n" + said.join("\n") + "\n" }
+}
+
+fn failure_said(failure: Text) -> Text {
+  return if failure.trim().is_empty() { "" } else { "\nThe last body you wrote did not pass. What the check said:\n" + failure.take(1500) + "\nWrite the body again so that it passes.\n" }
+}
+
+fn py_body_task(job: Filling) -> Task {
+  var names: Text[] = [receiver_name(job.asked.kind)]
+  for p in job.sig.params { names = names.append(p.name) }
+  return {text: "Write the body of one Python function in Kosika's Python engine:\n\ndef _" + job.asked.name + "(" + names.join(", ") + "):\n\nIt is the " + job.asked.kind + " method " + job.asked.name + ". What it does: " + job.asked.text.split("; examples:").first().or(job.asked.text) + "\n" + names[0] + " is the value the method is called on (a Python " + (if job.asked.kind == "Text" { "str" } else { if job.asked.kind == "Number" { "int or float" } else { "value" } }) + "); the other parameters are its arguments in order. Return a Python " + (if job.sig.result == "Text" { "str" } else { if job.sig.result == "Bool" { "bool" } else { if job.sig.result == "Number" { "int or float" } else { "value" } } }) + ". To refuse a call, raise RuntimeError with a short message.\n" + examples_said(job.asked) + failure_said(job.failure) + "\nAnswer with only the body: the indented lines that go under the def line. No def line, no imports, no explanation."}
+}
+
+fn go_body_task(job: Filling, python: Text) -> Task {
+  let reads = if job.asked.kind == "Text" { "textOf(r) is the text" } else { "toFloat(r) is the number as a float64, and r.(*big.Int) is it when it is whole" }
+  let bound = go_bindings(job.asked, job.sig)
+  let given = if bound.is_empty() { "In the body " + reads + ", the arguments are a[0], a[1] in order (textOf(a[0]) for a Text, toFloat(a[0]) for a Number)" } else { "The program has already declared these, so use them and do not declare them again:\n" + bound.join("\n").replace("\t\t", "  ") + "\n" }
+  return {text: "Write the body of one Go function in Kosika's Go engine, the method " + job.asked.name + " in native/methods.go:\n\nfunc(r Value, a []Value) Value {\n\t// the body\n}\n\n" + given + "\nReturn " + go_returns(job.sig.result) + ". The package already imports strings, unicode and math. To refuse a call, runFail(\"a short message\") and then return nil. It must give exactly what the Python engine gives, which is:\n```python\n" + python + "\n```\n" + examples_said(job.asked) + failure_said(job.failure) + "\nAnswer with only the lines of the body. No func line, no imports, no explanation."}
+}
+
+fn agreed_result(asked: MethodAsked, ran: Ran) -> Result {
+  let said = ran.stdout.take(1500) + ran.stderr.take(500)
+  return {text: "I wrote the body of " + asked.name + " in the Go engine and compared the two engines on sample values:\n" + said, last: {task: asked.text, output: said, passed: ran.exit_code == 0, known: true}}
+}
+
+workflow fill_py(job: Filling) -> Result {
+  source = execute coder.read_file("kosika/builtin_methods.py") otherwise {text: ""}
+  asked  = py_body_task(job)
+  code   = use_model scribe(asked.text) retry 1 learn by asked.text otherwise {text: ""}
+  saved  = call save_body({path: "kosika/builtin_methods.py", old: source.text, now: with_py_body(source.text, job.asked, code.text), name: job.asked.name})
+  tested = call run_tests(examples_work(job.asked))
+  result = worked_on({text: job.asked.text}, examples_work(job.asked), tested)
+  require approval
+}
+
+workflow fill_go(job: Filling) -> Result {
+  source  = execute coder.read_file("kosika/builtin_methods.py") otherwise {text: ""}
+  table   = execute coder.read_file("native/methods.go") otherwise {text: ""}
+  listed  = execute runner.run_python(["-c", helpers_script()])
+  helpers = helpers_of(listed)
+  python  = python_lines(source.text, job.asked.name)
+  asked   = with_helpers(go_body_task(job, python), helpers)
+  first   = use_model scribe(asked.text) retry 1 learn by asked.text otherwise {text: ""}
+  code    = call go_checked({job: job, python: python, helpers: helpers, table: table.text, code: first.text, round: 1})
+  saved   = call save_body({path: "native/methods.go", old: table.text, now: with_go_body(table.text, job.asked, code.text), name: job.asked.name})
+  agreed = execute runner.run_python(agree_args(job.asked))
+  result = agreed_result(job.asked, agreed)
+  require approval
+}
+
+// ---------------------------------------------------------------- compiled before it is kept
+//
+// A small model writing Go most often fails in ways the Go compiler names
+// exactly: a helper that is not in the package, a package that is not
+// imported, a float64 where an int is wanted. So before a Go body is kept
+// it is checked twice, by code. First the program reads the body's calls
+// against the names the package really has (a guard that needs no
+// compiler); then the body is put into a copy of native/ and go vet
+// compiles it. What either finds goes back to the model in the compiler's
+// own words, and the model writes the body again, at most twice. Each
+// round is kept in go-repairs.kl, the broken body, what was wrong and the
+// next try, so a later model can be taught from Kosika's own repairs.
+
+// The package's names, the packages methods.go imports, and the helpers
+// its methods call most, with their signatures.
+record Helpers { names: Text[] imports: Text[] used: Text[] }
+// One body to check: the job, the Python it must match, the package's
+// names, methods.go as it is, the body's text, and which round this is.
+record GoFix { job: Filling python: Text helpers: Helpers table: Text code: Text round: Number }
+record Vetted { ok: Bool said: Text }
+// One round of repair, as go-repairs.kl keeps it.
+record Repair { method: Text round: Number broken: Text wrong: Text fixed: Text passed: Bool }
+record RepairKept { path: Text by: Text entry: Repair }
+record RepairAt { n: Number hash: Text }
+
+tool keep_repair {
+  source system "log"
+  operation: "append"
+  access: observe
+  input: RepairKept
+  output: RepairAt
+}
+
+agent keeper {
+  can: [keep_repair]
+  max_steps: 1
+}
+
+fn go_rounds() -> Number {
+  return 2
+}
+
+fn helpers_script() -> Text {
+  return "import collections, glob, os, re\nfolder = os.path.join(os.getcwd(), 'native')\nsigs = {}\nnames = set()\nfor path in sorted(glob.glob(os.path.join(folder, '*.go'))):\n    if path.endswith('_test.go'):\n        continue\n    text = open(path, encoding='utf-8').read()\n    for m in re.finditer(r'^func ([A-Za-z_]\\w*)(?:\\[[^\\]]*\\])?(\\([^)]*\\))([^{\\n]*)\\{', text, re.M):\n        names.add(m.group(1))\n        sigs[m.group(1)] = (m.group(1) + m.group(2) + ' ' + m.group(3).strip()).strip()\n    for m in re.finditer(r'^(?:type|var|const) ([A-Za-z_]\\w*)', text, re.M):\n        names.add(m.group(1))\n    for block in re.findall(r'^(?:var|const|type) \\((.*?)^\\)', text, re.M | re.S):\n        for m in re.finditer(r'^\\t([A-Za-z_]\\w*)', block, re.M):\n            names.add(m.group(1))\nsource = open(os.path.join(folder, 'methods.go'), encoding='utf-8').read()\nimports = []\nblock = re.search(r'^import \\((.*?)^\\)', source, re.M | re.S)\nfor spec in re.findall(r'\"([^\"]+)\"', block.group(1) if block else ''):\n    imports.append(spec.split('/')[-1])\nfor spec in re.findall(r'^import \"([^\"]+)\"', source, re.M):\n    imports.append(spec.split('/')[-1])\nused = collections.Counter(n for n in re.findall(r'(?<![\\w.])([A-Za-z_]\\w*)\\(', source) if n in sigs)\nprint('NAMES ' + ' '.join(sorted(names)))\nprint('IMPORTS ' + ' '.join(imports))\nfor name, _ in used.most_common(20):\n    print('USED ' + sigs[name])\n"
+}
+
+fn vet_script() -> Text {
+  return "import os, re, shutil, subprocess, sys, tempfile\nold, new = sys.argv[1], sys.argv[2]\nfolder = tempfile.mkdtemp()\ncopy = os.path.join(folder, 'native')\nshutil.copytree(os.path.join(os.getcwd(), 'native'), copy, ignore=shutil.ignore_patterns('*.exe', 'kosika-native', '*_test.go'))\npath = os.path.join(copy, 'methods.go')\ntext = open(path, encoding='utf-8', newline='').read().replace('\\r\\n', '\\n')\nold, new = old.replace('\\r\\n', '\\n'), new.replace('\\r\\n', '\\n')\nif old not in text:\n    print('the method entry to check was not found in native/methods.go')\n    sys.exit(2)\nstart = text.index(old)\nfirst = text[:start].count('\\n') + 1\nlast = first + new.count('\\n')\nopen(path, 'w', encoding='utf-8', newline='').write(text.replace(old, new, 1))\nlines = new.split('\\n')\ntry:\n    ran = subprocess.run(['go', 'vet', '.'], cwd=copy, capture_output=True, text=True, timeout=600)\nexcept subprocess.TimeoutExpired:\n    print('go vet took more than ten minutes')\n    sys.exit(3)\nfinally:\n    shutil.rmtree(folder, ignore_errors=True)\nsaid = []\nfor line in (ran.stdout + ran.stderr).splitlines():\n    m = re.search(r'methods\\.go:(\\d+):(?:\\d+:)?\\s*(.*)', line)\n    if m and first <= int(m.group(1)) <= last:\n        n = int(m.group(1)) - first\n        said.append(lines[n].strip() + '   <- ' + m.group(2))\nif said:\n    print('\\n'.join(said[:12]))\n    sys.exit(1)\nprint('vetted: the method compiles' + ('' if ran.returncode == 0 else '; go vet found problems only outside it'))\n"
+}
+
+fn not_kept() -> RepairAt {
+  return {n: 0, hash: ""}
+}
+
+fn helpers_of(ran: Ran) -> Helpers {
+  var names: Text[] = []
+  var imports: Text[] = []
+  var used: Text[] = []
+  if ran.exit_code != 0 { return {names: [], imports: [], used: []} }
+  for line in ran.stdout.lines() {
+    if line.starts_with("NAMES ") { names = line.drop(6).words() }
+    else if line.starts_with("IMPORTS ") { imports = line.drop(8).words() }
+    else if line.starts_with("USED ") { used = used.append(line.drop(5).trim()) }
+  }
+  return {names: names, imports: imports, used: used}
+}
+
+// What the model is told of the package: the helpers it may call, and
+// the only packages it may name.
+fn helpers_said(helpers: Helpers) -> Text {
+  if helpers.names.is_empty() { return "" }
+  let most = if helpers.used.is_empty() { "" } else { "\nThe helpers the other methods call most, which exist in the package:\n" + (for one in helpers.used { "  " + one }).join("\n") }
+  let only = if helpers.imports.is_empty() { "" } else { "\nmethods.go imports only these packages: " + helpers.imports.join(", ") + ". Any other package, such as strconv or regexp, is not imported and must not be used." }
+  return most + only + "\nCall no function that is not in the package or in Go itself: a name that does not exist will not compile.\n"
+}
+
+fn with_helpers(task: Task, helpers: Helpers) -> Task {
+  let said = helpers_said(helpers)
+  if said.is_empty() { return task }
+  let end = "\nAnswer with only the lines of the body."
+  if not task.text.contains(end) { return {text: task.text + said} }
+  return {text: task.text.replace(end, said + end)}
+}
+
+fn go_own_names() -> Text[] {
+  return ["append", "cap", "clear", "close", "complex", "copy", "delete", "imag", "len", "make", "max", "min", "new", "panic", "print", "println", "real", "recover", "string", "bool", "byte", "rune", "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64", "uintptr", "float32", "float64", "complex64", "complex128", "error", "any", "if", "for", "switch", "return", "func", "go", "defer", "range", "select", "case", "else", "map", "chan", "struct", "interface", "var", "const", "type"]
+}
+
+fn go_packages() -> Text[] {
+  return ["strconv", "fmt", "sort", "regexp", "utf8", "bytes", "math", "big", "unicode", "strings", "slices", "maps", "errors", "os", "time", "rand", "bits"]
+}
+
+fn is_name_char(c: Text) -> Bool {
+  return c == "_" or c.lower() != c.upper() or "0123456789".contains(c)
+}
+
+// A line of Go without what its strings and its comment hold.
+fn go_code_only(line: Text) -> Text {
+  var out = ""
+  var quote = ""
+  var skip = false
+  let chars = line.chars()
+  for i in 0 until chars.length() {
+    let c = chars[i]
+    if skip { skip = false }
+    else if quote.is_empty() {
+      if c == "/" and i + 1 < chars.length() and chars[i + 1] == "/" { return out }
+      if c == "\"" or c == "'" or c == "`" {
+        quote = c
+        out = out + c
+      }
+      else { out = out + c }
+    } else {
+      if c == "\\" and quote != "`" { skip = true }
+      else if c == quote {
+        quote = ""
+        out = out + c
+      }
+    }
+  }
+  return out
+}
+
+// Each name in a line of Go that is called: the word right before a "(",
+// with what came before it ("." for a.b(), "" for b()).
+record GoCall { name: Text owner: Text }
+
+fn go_calls(line: Text) -> GoCall[] {
+  let chars = go_code_only(line).chars()
+  var found: GoCall[] = []
+  for i in 0 until chars.length() {
+    if chars[i] == "(" and i > 0 and is_name_char(chars[i - 1]) {
+      var start = i
+      while start > 0 and is_name_char(chars[start - 1]) { start -= 1 }
+      let name = chars.drop(start).take(i - start).join("")
+      var owner = ""
+      if start > 1 and chars[start - 1] == "." and is_name_char(chars[start - 2]) {
+        var from = start - 1
+        while from > 0 and is_name_char(chars[from - 1]) { from -= 1 }
+        owner = chars.drop(from).take(start - 1 - from).join("")
+      }
+      if not "0123456789".contains(name.take(1)) { found = found.append({name: name, owner: owner}) }
+    }
+  }
+  return found
+}
+
+// The names a body declares itself: x := ..., x, y := ..., var x ...,
+// and a for's own variables.
+fn go_declared(body: Text[]) -> Text[] {
+  var names: Text[] = []
+  for line in body {
+    let code = go_code_only(line).trim()
+    let left = if code.contains(":=") { code.split(":=").first().or("") } else { "" }
+    let named = if code.starts_with("var ") { code.drop(4).words().first().or("").split(",") } else { left.replace("for ", "").split(",") }
+    for one in named {
+      let name = one.trim()
+      if not name.is_empty() and (for c in name.chars() where not is_name_char(c) { c }).is_empty() { names = names.append(name) }
+    }
+  }
+  return names
+}
+
+// What the guard finds wrong with a body: calls to names the package does
+// not have, and packages methods.go does not import. Nothing when the
+// package's names could not be read.
+fn guard_problems(body: Text[], helpers: Helpers) -> Text[] {
+  if helpers.names.is_empty() { return [] }
+  let declared = go_declared(body)
+  var wrong: Text[] = []
+  for line in body {
+    for call in go_calls(line) {
+      if call.owner.is_empty() {
+        if not helpers.names.contains(call.name) and not go_own_names().contains(call.name) and not declared.contains(call.name) {
+          wrong = wrong.append(line.trim() + "   <- " + call.name + " does not exist in the package or in Go")
+        }
+      } else {
+        if go_packages().contains(call.owner) and not helpers.imports.contains(call.owner) and not declared.contains(call.owner) {
+          wrong = wrong.append(line.trim() + "   <- methods.go does not import " + call.owner)
+        }
+      }
+    }
+  }
+  return wrong.unique().take(12)
+}
+
+// A method's whole entry in methods.go, from its first line to its "}},".
+fn go_entry(methods: Text, name: Text) -> Text {
+  let lines = methods.replace("\r\n", "\n").split("\n")
+  var at = -1
+  for i in 0 until lines.length() {
+    if at < 0 and lines[i].starts_with("\t\"" + name + "\": {") { at = i }
+  }
+  if at < 0 { return "" }
+  for j in (at + 1) until lines.length() {
+    if lines[j] == "\t}}," { return lines.drop(at).take(j - at + 1).join("\n") }
+  }
+  return ""
+}
+
+fn fix_body(fix: GoFix) -> Text[] {
+  return without_rebinding(go_body(fix.code), fix.job.asked, fix.job.sig)
+}
+
+fn vet_args(fix: GoFix) -> Text[] {
+  let now = with_go_body(fix.table, fix.job.asked, fix.code)
+  return ["-c", vet_script(), go_entry(fix.table, fix.job.asked.name), go_entry(now, fix.job.asked.name)]
+}
+
+fn vetted_of(ran: Ran) -> Vetted {
+  let said = (ran.stdout.trim() + "\n" + ran.stderr.trim().take(600)).trim()
+  return {ok: ran.exit_code == 0, said: said}
+}
+
+fn guarded(fix: GoFix) -> Vetted {
+  return {ok: false, said: guard_problems(fix_body(fix), fix.helpers).join("\n")}
+}
+
+fn compile_failure(vetted: Vetted) -> Text {
+  return "It does not compile. The Go compiler, on the lines of your body:\n" + vetted.said.take(1500)
+}
+
+fn repair_task(fix: GoFix, vetted: Vetted) -> Task {
+  let told = go_body_task({asked: fix.job.asked, sig: fix.job.sig, failure: compile_failure(vetted)}, fix.python)
+  return with_helpers(told, fix.helpers)
+}
+
+// The next round, with the model's new body; an empty answer keeps the old.
+fn next_round(fix: GoFix, code: Text) -> GoFix {
+  let kept = if code.trim().is_empty() { fix.code } else { code }
+  return {job: fix.job, python: fix.python, helpers: fix.helpers, table: fix.table, code: kept, round: fix.round + 1}
+}
+
+fn repair_of(fix: GoFix, wrong: Vetted, next: GoFix, now: Vetted) -> Repair {
+  return {method: fix.job.asked.name, round: fix.round, broken: fix.code, wrong: wrong.said, fixed: next.code, passed: now.ok}
+}
+
+fn code_of(fix: GoFix) -> FileText {
+  return {text: fix.code}
+}
+
+workflow go_vet(fix: GoFix) -> Vetted {
+  vetted = match guard_problems(fix_body(fix), fix.helpers).is_empty() {
+    case true { call go_vet_run(fix) }
+    case _ { guarded(fix) }
+  }
+  require approval
+}
+
+workflow go_vet_run(fix: GoFix) -> Vetted {
+  ran    = execute runner.run_python(vet_args(fix))
+  vetted = vetted_of(ran)
+  require approval
+}
+
+// The body as it will be kept: the first one if it compiles, else the
+// model's repairs, at most go_rounds() of them.
+workflow go_checked(fix: GoFix) -> FileText {
+  first = call go_vet(fix)
+  code  = match first.ok or go_body(fix.code).is_empty() {
+    case true { code_of(fix) }
+    case _ { call go_repair(fix, first) }
+  }
+  require approval
+}
+
+workflow go_repair(fix: GoFix, wrong: Vetted) -> FileText {
+  asked = repair_task(fix, wrong)
+  again = use_model scribe(asked.text) retry 1 learn by asked.text otherwise {text: ""}
+  next  = next_round(fix, again.text)
+  now   = call go_vet(next)
+  kept  = execute keeper.keep_repair("go-repairs.kl", fix.job.asked.name, repair_of(fix, wrong, next, now)) otherwise not_kept()
+  code  = match now.ok or next.round > go_rounds() {
+    case true { code_of(next) }
+    case _ { call go_repair_last(next, now) }
+  }
+  require approval
+}
+
+workflow go_repair_last(fix: GoFix, wrong: Vetted) -> FileText {
+  asked = repair_task(fix, wrong)
+  again = use_model scribe(asked.text) retry 1 learn by asked.text otherwise {text: ""}
+  next  = next_round(fix, again.text)
+  now   = call go_vet(next)
+  kept  = execute keeper.keep_repair("go-repairs.kl", fix.job.asked.name, repair_of(fix, wrong, next, now)) otherwise not_kept()
+  code  = code_of(next)
+  require approval
+}
+
+workflow go_once_more(job: GoAgain) -> Result {
+  result = match job.fill {
+    case true { call fill_go({asked: job.asked, sig: signature(job.asked), failure: job.agreed.stdout.take(1200) + job.agreed.stderr.take(400)}) }
+    case _ { call on_my_own(go_again(job.asked, job.python, job.agreed)) }
+  }
+  require approval
+}
+
+workflow save_body(job: BodySave) -> Saved {
+  saved = match job.now == job.old {
+    case true { nothing_saved() }
+    case _ { call write_body(job) }
+  }
+  require approval
+}
+
+workflow write_body(job: BodySave) -> Saved {
+  saved = execute writer.save_all([{path: job.path, text: job.now, before: job.old, exists: true}], "The body of " + job.name + ", written by the model in place of the empty one.")
+  require approval
 }
 
 // ---------------------------------------------------------------- shells
@@ -2291,7 +2987,18 @@ workflow kosika_method(task: Task) -> Result {
   sig    = signature(asked)
   before = execute coder.read_file("kosika/builtin_methods.py") otherwise {text: ""}
   shell  = call write_py_shell({asked: asked, sig: sig, old: before.text})
-  tried  = call on_my_own(python_part(asked, shell_said(before.text, py_shelled(before.text, asked, sig), asked, sig)))
+  tests  = call write_examples_test({asked: asked, text: examples_text(asked, sig)})
+  first  = python_part(asked, shell_said(before.text, py_shelled(before.text, asked, sig), asked, sig))
+  made   = match py_fillable(before.text, asked, sig) {
+    case true { call fill_py({asked: asked, sig: sig, failure: ""}) }
+    case _ { call on_my_own(first) }
+  }
+  // With examples, their tests are what decide: run them, and if they fail
+  // the model gets one try to mend the method.
+  tried  = match examples_text(asked, sig).is_empty() {
+    case true { as_is(made) }
+    case _ { call examples_checked({asked: asked, task: first, tried: made}) }
+  }
   // A small model often writes the method's function and never registers
   // it. Registering is exact work, so the program does it, from the
   // function's own signature, and runs the tests again.
@@ -2372,13 +3079,16 @@ workflow method_rest(asked: MethodAsked, python: Result) -> Result {
   types  = execute coder.read_file("native/types.go") otherwise {text: ""}
   table  = execute coder.read_file("native/methods.go") otherwise {text: ""}
   shell  = call write_go_shell({asked: asked, sig: signature(asked), types: types.text, methods: table.text})
-  first  = call on_my_own(go_part(asked, python_lines(source.text, asked.name)))
+  first  = match go_fillable(table.text, asked) {
+    case true { call fill_go({asked: asked, sig: signature(asked), failure: ""}) }
+    case _ { call on_my_own(go_part(asked, python_lines(source.text, asked.name))) }
+  }
   agreed = execute runner.run_python(agree_args(asked))
   // The engines disagree, or the Go one has no such method: the Go part is
   // asked for once more, told what each engine said.
   go     = match agreed.exit_code == 0 {
     case true { as_is(first) }
-    case _ { call on_my_own(go_again(asked, python_lines(source.text, asked.name), agreed)) }
+    case _ { call go_once_more({asked: asked, fill: go_fillable(table.text, asked), python: python_lines(source.text, asked.name), agreed: agreed}) }
   }
   again  = execute runner.run_python(agree_args(asked))
   docs   = call on_my_own(docs_part(asked))
@@ -2460,12 +3170,162 @@ fn std_report(asked: StdAsked, wrote: Result, ran: Ran) -> Result {
 
 workflow kosika_std(task: Task) -> Result {
   asked  = std_asked(task)
+  before = execute coder.read_file("kosika/std/" + asked.file) otherwise {text: ""}
+  result = match std_fillable(before.text, asked) {
+    case true { call std_filled({asked: asked, old: before.text, failure: ""}) }
+    case _ { call std_whole(task) }
+  }
+  require approval
+}
+
+// The model writes the whole function into the file, as before: for a
+// request whose signature the program cannot read.
+workflow std_whole(task: Task) -> Result {
+  asked  = std_asked(task)
   wrote  = call on_my_own(std_part(asked))
   source = execute coder.read_file("kosika/std/" + asked.file) otherwise {text: ""}
   copied = execute writer.save_all([{path: "kosika/std/" + asked.file, text: exported_too(source.text, asked.name), before: source.text, exists: true}, {path: "native/std/" + asked.file, text: exported_too(source.text, asked.name), before: "", exists: true}], "Exports " + asked.name + " and copies std/" + asked.file + " to the Go engine, which carries its own copy.")
   ran    = execute runner.run_python(["-c", both_tests_script(), "std/" + asked.file])
   result = std_report(asked, wrote, ran)
   require approval
+}
+
+// ---------------------------------------------------------------- std bodies
+//
+// As for a method: when the request says the function's whole signature,
+// "function NAME(a: T, ...) -> T", the program writes the function itself,
+// empty, names it in the export list, and writes a test from the request's
+// examples; the model is asked for the lines of its body alone, and the
+// program puts them in place. A model that writes a right body often cannot
+// write an edit that applies to a long file.
+
+record StdSig { ok: Bool params: Text result: Text }
+record StdJob { asked: StdAsked old: Text failure: Text }
+
+fn std_signature(asked: StdAsked) -> StdSig {
+  let none: StdSig = {ok: false, params: "", result: ""}
+  let open = asked.name + "("
+  if not asked.text.contains(open) { return none }
+  let after = asked.text.split(open).drop(1).join(open)
+  let params = after.split(")").first().or("").trim()
+  let rest = after.split(")").drop(1).join(")").trim()
+  if not rest.starts_with("->") { return none }
+  let result = rest.drop(2).trim().words().first().or("").trim_marks(".,;:")
+  if not ["Text", "Number", "Bool"].contains(result) { return none }
+  for part in params.split(",") {
+    if not part.trim().is_empty() and not part.contains(":") { return none }
+  }
+  return {ok: true, params: params, result: result}
+}
+
+fn std_default(result: Text) -> Text {
+  if result == "Text" { return "\"\"" }
+  if result == "Number" { return "0" }
+  return "false"
+}
+
+fn std_fillable(source: Text, asked: StdAsked) -> Bool {
+  return std_signature(asked).ok and not ("\n" + source.replace("\r\n", "\n")).contains("\nfn " + asked.name + "(")
+}
+
+// The examples as a Kosika test at the end of the file.
+fn std_examples_test(asked: StdAsked) -> Text {
+  let examples = examples_of(asked.text)
+  if examples.is_empty() { return "" }
+  let lines = for e in examples { "  expect " + e.call + " == " + e.value }
+  return "\ntest \"" + asked.name + " gives what its request's examples say\" {\n" + lines.join("\n") + "\n}\n"
+}
+
+// The file with the empty function before its first test (or at its end),
+// named in the export list, and the examples' test at the end.
+fn std_shelled(source: Text, asked: StdAsked) -> Text {
+  let sig = std_signature(asked)
+  let plain = source.replace("\r\n", "\n")
+  let stub = "fn " + asked.name + "(" + sig.params + ") -> " + sig.result + " {\n  return " + std_default(sig.result) + "\n}\n\n"
+  let at = ("\n" + plain).index_of("\ntest \"").or(default: -1)
+  let placed = if at < 0 { plain.trim_end() + "\n\n" + stub } else { plain.take(at) + stub + plain.drop(at) }
+  let now = exported_too(placed, asked.name).trim_end() + "\n" + std_examples_test(asked)
+  return if source.contains("\r\n") { now.replace("\n", "\r\n") } else { now }
+}
+
+// The file with the function's body replaced by the model's.
+fn with_std_body(source: Text, asked: StdAsked, answer: Text) -> Text {
+  let body = std_body(answer, asked.name)
+  if body.is_empty() { return source }
+  let lines = source.replace("\r\n", "\n").split("\n")
+  var at = -1
+  for i in 0 until lines.length() {
+    if at < 0 and lines[i].starts_with("fn " + asked.name + "(") { at = i }
+  }
+  if at < 0 { return source }
+  var end = -1
+  for j in (at + 1) until lines.length() {
+    if end < 0 and lines[j] == "}" { end = j }
+  }
+  if end < 0 { return source }
+  let now = lines.take(at + 1).concat(body).concat(lines.drop(end)).join("\n")
+  return if source.contains("\r\n") { now.replace("\n", "\r\n") } else { now }
+}
+
+// What the model wrote inside the function: its fn line and closing brace
+// left out if it wrote them.
+fn std_body(answer: Text, name: Text) -> Text[] {
+  let lines = unfenced_lines(answer)
+  var at = -1
+  for i in 0 until lines.length() {
+    if at < 0 and lines[i].trim().starts_with("fn " + name + "(") { at = i }
+  }
+  if at < 0 { return reindented(lines, "  ") }
+  var body: Text[] = []
+  var open = true
+  for line in lines.drop(at + 1) {
+    if open and line.trim() == "}" and indent_of(line) <= indent_of(lines[at]) { open = false }
+    if open { body = body.append(line) }
+  }
+  return reindented(body, "  ")
+}
+
+fn std_body_task(job: StdJob) -> Task {
+  let sig = std_signature(job.asked)
+  let shown = job.old.take(6000)
+  return {text: "Write the body of one Kosika function in Kosika's standard library, kosika/std/" + job.asked.file + ":\n\nfn " + job.asked.name + "(" + sig.params + ") -> " + sig.result + " {\n  // the body\n}\n\nWhat it does: " + job.asked.text.split("; examples:").first().or(job.asked.text) + "\n" + examples_said_std(job.asked) + "Kosika is its own language, not Python: `let x = ...` for a name that never changes, `var x = ...` and `x = ...` to change one; `if cond { ... } else { ... }`; `for x in list { ... }` and `for i in 0 until n { ... }`; a list is [a, b] and grows with `xs = xs.append(x)`; text methods include length(), lower(), upper(), trim(), split(sep), contains(part), starts_with(p), slice(start, end), chars(), words(), to_number() (gives a Number?, read with .or(default)); numbers have round(), floor(), min(x), max(x), to_text(); every path ends with `return`. Use only functions defined in the file below or built into Kosika.\n\nThe file as it is:\n```\n" + shown + "\n```\n" + failure_said(job.failure) + "\nAnswer with only the lines of the body. No fn line, no explanation."}
+}
+
+fn examples_said_std(asked: StdAsked) -> Text {
+  var said: Text[] = []
+  for e in examples_of(asked.text) { said = said.append("  " + e.call + " gives " + e.value) }
+  return if said.is_empty() { "" } else { "These must hold:\n" + said.join("\n") + "\n" }
+}
+
+workflow std_filled(job: StdJob) -> Result {
+  shell  = call save_body({path: "kosika/std/" + job.asked.file, old: job.old, now: std_shelled(job.old, job.asked), name: job.asked.name})
+  first  = call std_fill_once(job)
+  again  = match first.last.passed {
+    case true { as_is(first) }
+    case _ { call std_fill_once({asked: job.asked, old: job.old, failure: first.last.output}) }
+  }
+  result = again
+  require approval
+}
+
+// One body from the model, put in place, copied to the Go engine, and the
+// file's tests run in both engines.
+workflow std_fill_once(job: StdJob) -> Result {
+  source = execute coder.read_file("kosika/std/" + job.asked.file) otherwise {text: ""}
+  asked  = std_body_task({asked: job.asked, old: source.text, failure: job.failure})
+  code   = use_model scribe(asked.text) retry 1 learn by asked.text otherwise {text: ""}
+  saved  = call save_body({path: "kosika/std/" + job.asked.file, old: source.text, now: with_std_body(source.text, job.asked, code.text), name: job.asked.name})
+  now    = execute coder.read_file("kosika/std/" + job.asked.file) otherwise {text: ""}
+  copied = execute writer.save_all([{path: "native/std/" + job.asked.file, text: now.text, before: "", exists: true}], "Copies std/" + job.asked.file + " to the Go engine, which carries its own copy.")
+  ran    = execute runner.run_python(["-c", both_tests_script(), "std/" + job.asked.file])
+  result = std_filled_report(job.asked, ran)
+  require approval
+}
+
+fn std_filled_report(asked: StdAsked, ran: Ran) -> Result {
+  let ok = ran.exit_code == 0
+  let said = ran.stdout.take(1500) + ran.stderr.take(500)
+  return {text: "I wrote " + asked.name + " in std/" + asked.file + ": the program wrote the empty function, its export and a test from the request's examples, and the model wrote its body.\n\n" + (if ok { "The file's tests pass in both engines, and the Go engine's copy, native/std/" + asked.file + ", is the same file.\n" } else { "The file's tests do NOT pass in both engines, so this is not done:\n" }) + said, last: {task: asked.text, output: said, passed: ok, known: true}}
 }
 
 // ---------------------------------------------------------------- websites
@@ -3418,4 +4278,200 @@ test "a Method line left outside the table is moved into it" {
   expect in_table(now, "starts_with_any")
   expect now.count("\"starts_with_any\",") == 1
   expect now.contains("Method(\"Text\", \"starts_with_any\", ((\"prefixes\", \"Text[]\"),), \"Bool\", _starts_with_any),\n    Method(\"Text\", \"upper\"")
+}
+
+test "a request's examples become its tests, and the model is told to leave them" {
+  asked = method_asked({text: "add a Text method surround(left: Text, right: Text) that gives the text with left before it and right after it; examples: `\"x\".surround(\"<\", \">\")` is `\"<x>\"`, `\"\".surround(\"a\", \"b\")` is `\"ab\"`"})
+  found = examples_of(asked.text)
+  expect found.length() == 2
+  expect found[0].call == "\"x\".surround(\"<\", \">\")"
+  expect found[1].value == "\"ab\""
+  written = examples_text(asked, signature(asked))
+  expect written.contains("self.assertEqual(value_of('\"x\".surround(\"<\", \">\")', \"Text\"), \"<x>\")")
+  told = python_part(asked, "wrote def _surround(text, left, right) above the METHODS table")
+  expect told.text.contains("already written, from the request's examples")
+  expect not told.text.contains("tests/test_surround.py")
+  expect examples_work(asked).did == ["save_all tests/test_surround.py"]
+  expect not told.text.contains("three to six")
+}
+
+test "true and false examples are written as Python writes them" {
+  asked = method_asked({text: "add a Number method is_even() that says whether a whole number is even, giving a Bool; examples: `4.is_even()` is `true`, `3.is_even()` is `false`"})
+  written = examples_text(asked, signature(asked))
+  expect written.contains("value_of('4.is_even()', \"Bool\"), True)")
+  expect written.contains("value_of('3.is_even()', \"Bool\"), False)")
+}
+
+test "a request with no examples asks the model for tests as before" {
+  asked = method_asked({text: "add a Text method shout() that gives the text in capitals, giving a Text"})
+  expect examples_text(asked, signature(asked)) == ""
+  told = python_part(asked, "")
+  expect told.text.contains("three to six")
+}
+
+test "a Python body is put in place of the empty one, fenced or not, with or without its def line" {
+  asked = method_asked({text: "add a Number method is_even() that says whether a whole number is even, giving a Bool; examples: `(4).is_even()` is `true`"})
+  source = "import x\n\n\ndef _is_even(number):\n    raise RuntimeError(\"is_even is not written yet\")\n\n\nMETHODS: tuple[Method, ...] = (\n)\n"
+  bare = with_py_body(source, asked, "return number % 2 == 0")
+  expect bare.contains("def _is_even(number):\n    return number % 2 == 0\n\n\nMETHODS")
+  fenced = with_py_body(source, asked, "```python\ndef _is_even(number):\n        if number != int(number):\n            return False\n        return int(number) % 2 == 0\n```\nThis works because...")
+  expect fenced.contains("def _is_even(number):\n    if number != int(number):\n        return False\n    return int(number) % 2 == 0\n\n\nMETHODS")
+  expect not fenced.contains("not written yet")
+  expect with_py_body(source, asked, "   ") == source
+}
+
+test "a Go body is put inside the method's entry, and only there" {
+  asked = method_asked({text: "add a Text method shout() that gives the text in capitals, giving a Text"})
+  table = "var textMethods = map[string]method{\n\t\"shout\": {nil, func(r Value, a []Value) Value {\n\t\trunFail(\"shout is not written yet\")\n\t\treturn nil\n\t}},\n\t\"other\": {nil, func(r Value, a []Value) Value {\n\t\treturn nil\n\t}},\n}\n"
+  now = with_go_body(table, asked, "```go\nreturn strings.ToUpper(textOf(r))\n```")
+  expect now.contains("\t\"shout\": {nil, func(r Value, a []Value) Value {\n\t\ttext := textOf(r)\n\t\t_ = text\n\t\treturn strings.ToUpper(textOf(r))\n\t}},\n\t\"other\"")
+  whole = with_go_body(table, asked, "\"shout\": {nil, func(r Value, a []Value) Value {\n    return strings.ToUpper(textOf(r))\n}},")
+  expect whole == now
+}
+
+test "the body task names the function, the examples and the last failure" {
+  asked = method_asked({text: "add a Text method surround(left: Text, right: Text) that gives the text with left before it and right after it, giving a Text; examples: `\"x\".surround(\"<\", \">\")` is `\"<x>\"`"})
+  told = py_body_task({asked: asked, sig: signature(asked), failure: "AssertionError: '<x' != '<x>'"})
+  expect told.text.contains("def _surround(text, left, right):")
+  expect told.text.contains("\"x\".surround(\"<\", \">\") gives \"<x>\"")
+  expect told.text.contains("AssertionError")
+  expect not told.text.contains("examples:")
+}
+
+test "a Go body starts from the program's own variables, read the right way round" {
+  asked = method_asked({text: "add a Text method surround(left: Text, right: Text) that gives the text with left before it and right after it, giving a Text; examples: `\"x\".surround(\"<\", \">\")` is `\"<x>\"`"})
+  bound = go_bindings(asked, signature(asked))
+  expect bound[0] == "\t\ttext := textOf(r)"
+  expect bound.contains("\t\tleft := textOf(a[0])")
+  expect bound.contains("\t\tright := textOf(a[1])")
+  table = "var textMethods = map[string]method{\n\t\"surround\": {[]string{\"left\", \"right\"}, func(r Value, a []Value) Value {\n\t\trunFail(\"surround is not written yet\")\n\t\treturn nil\n\t}},\n}\n"
+  now = with_go_body(table, asked, "text := textOf(a[0])\nreturn left + text + right")
+  expect now.contains("\t\ttext := textOf(r)\n\t\t_ = text\n")
+  expect not now.contains("textOf(a[0])\n\t\t_ = left\n\t\ttext")
+  expect now.contains("\t\treturn left + text + right\n\t}},")
+  told = go_body_task({asked: asked, sig: signature(asked), failure: ""}, "def _surround(text, left, right):\n    return left + text + right")
+  expect told.text.contains("left := textOf(a[0])")
+  expect told.text.contains("Return a Go string")
+}
+
+test "a body whose first line sits at the margin and the rest indented is put right" {
+  asked = method_asked({text: "add a Text method is_upper_letter() that says whether the text is one letter from A to Z, giving a Bool; examples: `\"Q\".is_upper_letter()` is `true`"})
+  source = "def _is_upper_letter(text):
+    raise RuntimeError(\"is_upper_letter is not written yet\")
+
+
+METHODS: tuple[Method, ...] = (
+)
+"
+  now = with_py_body(source, asked, "if len(text) != 1:
+        return False
+    return \"A\" <= text <= \"Z\"")
+  expect now.contains("def _is_upper_letter(text):
+    if len(text) != 1:
+        return False
+    return \"A\" <= text <= \"Z\"
+
+
+METHODS")
+  expect with_py_body(source, asked, "return text == text.upper()").contains("    return text == text.upper()
+")
+}
+
+test "Kosika's type names written as Go conversions become Go's own" {
+  expect go_tidied("		return Bool(false)") == "		return bool(false)"
+  expect go_tidied("return Text(x) + Number(y)") == "return string(x) + float64(y)"
+  expect go_tidied("return isBool(x) || r.Bool(x)") == "return isBool(x) || r.Bool(x)"
+}
+
+test "the guard names helpers that do not exist and packages not imported" {
+  helpers: Helpers = {names: ["textOf", "toFloat", "bigInt", "runFail", "Value"], imports: ["strings", "unicode", "math"], used: []}
+  body = ["\t\tn, err := strconv.Atoi(text)", "\t\tparts := splitWords(text)", "\t\treturn strings.ToUpper(text)"]
+  wrong = guard_problems(body, helpers)
+  expect wrong.length() == 2
+  expect wrong[0].contains("methods.go does not import strconv")
+  expect wrong[1].contains("splitWords does not exist")
+  fine = ["\t\tup := func(s string) string { return strings.ToUpper(s) }", "\t\tif len(text) == 0 { runFail(\"empty (no text)\") }", "\t\t// call nothing(here)", "\t\treturn up(text) + string(rune(65))"]
+  expect guard_problems(fine, helpers).is_empty()
+  expect guard_problems(body, {names: [], imports: [], used: []}).is_empty()
+}
+
+test "a Go line's calls are read without its strings and its comment" {
+  calls = go_calls("x := strings.Repeat(\"f(\", n) + pad(y) // see more(z)")
+  expect calls.length() == 2
+  expect calls[0].name == "Repeat"
+  expect calls[0].owner == "strings"
+  expect calls[1].name == "pad"
+  expect calls[1].owner == ""
+  expect go_declared(["\t\ta, b := 1, 2", "\t\tvar total float64", "\t\tfor i, c := range text {"]) == ["a", "b", "total", "i", "c"]
+}
+
+test "the package's helpers are read and told to the model" {
+  ran: Ran = {exit_code: 0, stdout: "NAMES textOf runFail Value\nIMPORTS math strings unicode\nUSED textOf(v Value) string\nUSED runFail(message string)\n", stderr: ""}
+  helpers = helpers_of(ran)
+  expect helpers.names == ["textOf", "runFail", "Value"]
+  expect helpers.imports == ["math", "strings", "unicode"]
+  asked = method_asked({text: "add a Text method shout() that gives the text in capitals, giving a Text"})
+  told = with_helpers(go_body_task({asked: asked, sig: signature(asked), failure: ""}, ""), helpers)
+  expect told.text.contains("  textOf(v Value) string")
+  expect told.text.contains("methods.go imports only these packages: math, strings, unicode")
+  expect told.text.ends_with("Answer with only the lines of the body. No func line, no imports, no explanation.")
+  expect helpers_of({exit_code: 1, stdout: "NAMES x", stderr: ""}).names.is_empty()
+  expect helpers_script().contains("USED ")
+  expect vet_script().contains("'go', 'vet', '.'")
+}
+
+test "a method's entry is found whole, to be checked in a copy" {
+  methods = "var textMethods = map[string]method{\n\t\"shout\": {nil, func(r Value, a []Value) Value {\n\t\trunFail(\"shout is not written yet\")\n\t\treturn nil\n\t}},\n\t\"other\": {nil, func(r Value, a []Value) Value {\n\t\treturn nil\n\t}},\n}"
+  expect go_entry(methods, "shout") == "\t\"shout\": {nil, func(r Value, a []Value) Value {\n\t\trunFail(\"shout is not written yet\")\n\t\treturn nil\n\t}},"
+  expect go_entry(methods, "absent") == ""
+}
+
+test "a repair round is told the compiler's words and kept as broken, wrong and fixed" {
+  methods = "var textMethods = map[string]method{\n\t\"shout\": {nil, func(r Value, a []Value) Value {\n\t\trunFail(\"shout is not written yet\")\n\t\treturn nil\n\t}},\n}"
+  asked = method_asked({text: "add a Text method shout() that gives the text in capitals, giving a Text"})
+  helpers: Helpers = {names: ["textOf", "runFail", "Value"], imports: ["strings"], used: []}
+  fix: GoFix = {job: {asked: asked, sig: signature(asked), failure: ""}, python: "", helpers: helpers, table: methods, code: "return upperOf(text)", round: 1}
+  wrong = guarded(fix)
+  expect not wrong.ok
+  expect wrong.said.contains("upperOf does not exist")
+  told = repair_task(fix, wrong)
+  expect told.text.contains("It does not compile. The Go compiler, on the lines of your body:")
+  expect told.text.contains("upperOf does not exist")
+  expect told.text.contains("methods.go imports only these packages: strings")
+  next = next_round(fix, "return strings.ToUpper(text)")
+  expect next.round == 2
+  expect guard_problems(fix_body(next), helpers).is_empty()
+  expect next_round(fix, "  ").code == "return upperOf(text)"
+  kept = repair_of(fix, wrong, next, {ok: true, said: "vetted: the method compiles"})
+  expect kept.method == "shout"
+  expect kept.broken == "return upperOf(text)"
+  expect kept.fixed == "return strings.ToUpper(text)"
+  expect kept.passed
+  args = vet_args(next)
+  expect args[2].starts_with("\t\"shout\": {nil")
+  expect args[3].contains("return strings.ToUpper(text)")
+  expect vetted_of({exit_code: 1, stdout: "x   <- undefined: y", stderr: ""}).said == "x   <- undefined: y"
+}
+
+test "a standard-library function is shelled from its signature, exported, and tested from its examples" {
+  asked = std_asked({text: "add an exported function hex_of(red: Number, green: Number, blue: Number) -> Text to kosika/std/designs_palette.kos that gives the colour as #rrggbb; examples: `hex_of(255, 0, 16)` is `\"#ff0010\"`"})
+  sig = std_signature(asked)
+  expect sig.ok
+  expect sig.params == "red: Number, green: Number, blue: Number"
+  expect sig.result == "Text"
+  file = "// colours\n\nexport [contrast]\n\nfn contrast(a: Text, b: Text) -> Number {\n  return 1\n}\n\ntest \"contrast\" {\n  expect contrast(\"a\", \"b\") == 1\n}\n"
+  expect std_fillable(file, asked)
+  shelled = std_shelled(file, asked)
+  expect shelled.contains("export [contrast, hex_of]")
+  expect shelled.contains("fn hex_of(red: Number, green: Number, blue: Number) -> Text {\n  return \"\"\n}\n\ntest \"contrast\"")
+  expect shelled.contains("expect hex_of(255, 0, 16) == \"#ff0010\"")
+  expect not std_fillable(shelled, asked)
+  filled = with_std_body(shelled, asked, "```kosika\nfn hex_of(red: Number, green: Number, blue: Number) -> Text {\n    let parts = [red, green, blue]\n    return \"#\"\n}\n```")
+  expect filled.contains("fn hex_of(red: Number, green: Number, blue: Number) -> Text {\n  let parts = [red, green, blue]\n  return \"#\"\n}\n")
+}
+
+test "a function whose signature cannot be read goes the old way" {
+  asked = std_asked({text: "add a function slug(text) to kosika/std/text.kos that makes a slug"})
+  expect not std_signature(asked).ok
+  expect not std_fillable("", asked)
 }
