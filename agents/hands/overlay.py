@@ -51,7 +51,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-HOME = Path(os.environ.get("KOSIKA_HOME") or (Path.home() / ".kosika"))
+# Not KOSIKA_HOME: that names the engine for the daily coder, not this folder.
+HOME = Path(os.environ.get("KOSIKA_OVERLAY_HOME") or (Path.home() / ".kosika"))
 CHROME = Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe")
 FRAME = 1 / 40
 

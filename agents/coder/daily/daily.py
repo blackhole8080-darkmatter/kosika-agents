@@ -52,7 +52,14 @@ from kosika.model import OpenAICompatibleProvider  # noqa: E402
 # CODER_TODO.md (KOSIKA_CODER_TODO points somewhere else).
 TODO = Path(os.environ.get("KOSIKA_CODER_TODO") or REPO / "CODER_TODO.md")
 WORK = Path.home() / "Aryan_Private" / "kosika-daily"
-COPIED = ["kosika", "native", "tests/test_short_methods.py", "KOSIKA.md"]
+# What a coder gets a copy of, and from which branch on GitHub. The Studio
+# job (studio_job.ps1) copies the desktop app as well, from the app's branch.
+COPIED = [p for p in os.environ.get("KOSIKA_COPIED", "kosika,native,tests/test_short_methods.py,KOSIKA.md").split(",") if p]
+SOURCE = os.environ.get("KOSIKA_SOURCE_BRANCH", "studio")
+# The overlay that shows each coder at work (agents/hands/overlay.py).
+OVERLAY = HERE.parents[1] / "hands" / "overlay.py"
+#: The kits' agents, in the order a swarm's members take their names.
+NAMES = ["coder-1", "coder-2", "coder-3", "coder-4", "scout", "Kosika"]
 ROUTER = HERE.parents[2] / "models" / "learning_router.py"
 PORT = int(os.environ.get("KOSIKA_ROUTER_PORT", "8791"))
 
@@ -66,9 +73,9 @@ def next_request(lines: list[str]) -> int | None:
 
 def copy_studio(folder: Path) -> None:
     """Kosika as studio has it on GitHub: what others will build on too."""
-    subprocess.run(["git", "fetch", "-q", "origin", "studio"], cwd=REPO, check=False)
+    subprocess.run(["git", "fetch", "-q", "origin", SOURCE], cwd=REPO, check=False)
     tar = subprocess.run(
-        ["git", "archive", "--format=tar", "origin/studio", *COPIED],
+        ["git", "archive", "--format=tar", f"origin/{SOURCE}", *COPIED],
         cwd=REPO,
         capture_output=True,
         check=True,
@@ -159,16 +166,96 @@ def run_coder(folder: Path, agents: Path, text: str) -> dict:
     agent = next(key for key in app.agents() if key.startswith("coder/"))
     started = time.monotonic()
     job = app.start(agent, {"text": text})
+    name = os.environ.get("KOSIKA_AGENT") or "coder-1"
+    show_overlay()
     while job.state in ("running", "waiting") and time.monotonic() - started < 3600:
         if job.state == "waiting":
             app.decide(job.id, True)
+        say_working(name, text, folder, started)
         time.sleep(0.5)
+    overlay_stop(name)
     return {
         "state": job.state,
         "seconds": round(time.monotonic() - started),
         "said": getattr(job, "text", "") or "",
         "error": job.error or "",
     }
+
+
+_overlay = None
+
+
+def _overlay_module():
+    """overlay.py beside the hands, loaded once; None when it is not there."""
+    global _overlay
+    if _overlay is None and OVERLAY.exists():
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("kosika_overlay", OVERLAY)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["kosika_overlay"] = module
+        spec.loader.exec_module(module)
+        _overlay = module
+    return _overlay
+
+
+def show_overlay() -> None:
+    """Start the overlay if it is not already up (it keeps itself to one)."""
+    if os.name != "nt" or not OVERLAY.exists() or os.environ.get("KOSIKA_NO_OVERLAY"):
+        return
+    flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    subprocess.Popen([sys.executable, str(OVERLAY), "--quit-after", "600"], creationflags=flags,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def newest_file(folder: Path, since: float) -> Path | None:
+    """The file the coder wrote last in its copy, if it wrote one since `since`."""
+    newest, at = None, since
+    for path in folder.rglob("*"):
+        if "__pycache__" in path.parts or ".gocache" in path.parts or not path.is_file():
+            continue
+        try:
+            moment = path.stat().st_mtime
+        except OSError:
+            continue
+        if moment > at and path.suffix not in (".jsonl", ".exe", ".pyc"):
+            newest, at = path, moment
+    return newest
+
+
+_last_look = [0.0, None]
+
+
+def say_working(name: str, text: str, folder: Path, started: float) -> None:
+    """Tell the overlay this coder is at work: what it was asked, and the end
+    of the line it wrote last, which the overlay types out beside its pointer.
+    Only what the coder really wrote is shown; nothing is made up."""
+    shown = _overlay_module()
+    if shown is None:
+        return
+    now = time.time()
+    if now - _last_look[0] > 3:  # walking the copy is not free; every few seconds is enough
+        _last_look[0] = now
+        _last_look[1] = newest_file(folder, now - (time.monotonic() - started))
+    typing = None
+    path = _last_look[1]
+    if path is not None:
+        try:
+            lines = [l for l in path.read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()]
+            typing = f"{path.name}: {lines[-1].strip()}" if lines else path.name
+        except OSError:
+            pass
+    doing = text if len(text) <= 60 else text[:57].rstrip() + "..."
+    try:
+        shown.beat(name, doing, typing)
+    except OSError:
+        pass
+
+
+def overlay_stop(name: str) -> None:
+    shown = _overlay_module()
+    if shown is not None:
+        shown.stop(name)
 
 
 DEVELOP = HERE / "develop.kos"
@@ -346,7 +433,11 @@ def swarm(size: int) -> None:
     router = start_router()
     started = time.monotonic()
     alone = dict(os.environ, KOSIKA_SWARM="1") if len(open_ones) > 1 else dict(os.environ)
-    members = [subprocess.Popen([sys.executable, __file__, "--todo", str(TODO), "--take", text], env=alone) for text in open_ones]
+    # Each member works as one of the kits' agents, so it has its own
+    # colour and pointer on the overlay.
+    members = [subprocess.Popen([sys.executable, __file__, "--todo", str(TODO), "--take", text],
+                                env={**alone, "KOSIKA_AGENT": NAMES[at % len(NAMES)]})
+               for at, text in enumerate(open_ones)]
     # A member that hangs (a judge step stuck after a failure) must not hold
     # the whole swarm: after MEMBER_SECONDS it is stopped and its request
     # marked as not passed.
