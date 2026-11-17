@@ -12,15 +12,36 @@
 #   .\studio_job.ps1                 # starts in the background and returns
 #   .\studio_job.ps1 -Wait           # stays until the swarm is done
 
-param([switch]$Wait, [int]$Size = 4)
+param([switch]$Wait, [int]$Size = 4, [string]$List = "studio_todo.md", [string]$Name = "studio-todo.md", [switch]$Next)
 
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projects = Resolve-Path (Join-Path $here "..\..\..\..")
 $daily = Join-Path $env:USERPROFILE "Aryan_Private\kosika-daily"
 New-Item -ItemType Directory -Force $daily | Out-Null
-$todo = Join-Path $daily "studio-todo.md"
+$todo = Join-Path $daily $Name
+# -Next: the swarm writes its own list. studio_plan.kos turns the components
+# its coders ranked (the newest STUDIO_COMPONENTS.md that passed its checks)
+# into requests, skipping ones already asked for.
+if ($Next) {
+  $todo = Join-Path $daily "studio-todo-next.md"
+  $runs = Get-ChildItem $daily -Directory | Where-Object { Test-Path (Join-Path $_.FullName "kosika\STUDIO_COMPONENTS.md") } |
+    Where-Object { (Get-Content (Join-Path $_.FullName "run.json") -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json).passed } |
+    Sort-Object LastWriteTime
+  if (-not $runs) { "No STUDIO_COMPONENTS.md has passed its checks yet; nothing to plan."; return }
+  $asked = (Get-ChildItem $daily -Filter "studio-todo*.md" | Get-Content -Raw) -join "`n"
+  $done = [regex]::Matches($asked, "app_assets/studio_([a-z0-9_]+)\.kos") | ForEach-Object { $_.Groups[1].Value.Replace("_", "-") }
+  $plan = @{ p = @{ components = (Get-Content (Join-Path $runs[-1].FullName "kosika\STUDIO_COMPONENTS.md") -Raw); most = $Size; done = @($done) } }
+  $ask = Join-Path $env:TEMP "studio-plan.json"
+  $plan | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 $ask
+  $env:PYTHONPATH = Join-Path $projects "kosika-studio-app"
+  $said = & python -m kosika.cli run (Join-Path $here "studio_plan.kos") --workflow plan --input $ask 2>&1 | Where-Object { $_ -match "^\{" } | Select-Object -Last 1
+  $lines = python -c "import ast,sys; print(chr(10).join(ast.literal_eval(sys.argv[1])['lines']))" $said
+  if (-not $lines) { "The plan gave no new requests."; return }
+  Add-Content -Encoding utf8 $todo $lines
+  "Planned from $($runs[-1].Name):"; $lines | ForEach-Object { "  " + $_.Substring(0, [Math]::Min(110, $_.Length)) }
+}
 # The list is copied once; after that its marks are the swarm's record.
-if (-not (Test-Path $todo)) { Copy-Item (Join-Path $here "studio_todo.md") $todo }
+if (-not $Next -and -not (Test-Path $todo)) { Copy-Item (Join-Path $here $List) $todo }
 
 $env:PYTHONIOENCODING = "utf-8"
 $env:KOSIKA_ROUTER_PORT = "8791"

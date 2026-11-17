@@ -258,6 +258,23 @@ def overlay_stop(name: str) -> None:
         shown.stop(name)
 
 
+#: How many times a coder may try a request: the second time it is told what
+#: the checks found (KOSIKA_CODER_TRIES=1 for a single try).
+TRIES = max(1, int(os.environ.get("KOSIKA_CODER_TRIES", "2")))
+
+
+def second_try(text: str, report: Path) -> str:
+    """The request again, with the lines of the checks that failed."""
+    try:
+        found = [line.strip() for line in report.read_text(encoding="utf-8").splitlines()
+                 if line.strip().startswith("FAIL") or line.startswith("Why it did not pass")]
+    except OSError:
+        found = []
+    notes = "\n".join(f"- {line}" for line in found[:12]) or "- the checks did not pass"
+    return (f"{text}\n\nYour first try is in this folder already, but it did not pass these checks:\n{notes}\n"
+            "Fix the files so every one of these passes. Keep what was right.")
+
+
 DEVELOP = HERE / "develop.kos"
 
 
@@ -295,6 +312,8 @@ def judge_in_kosika(place: Path, text: str, files: list[str], ran: dict, today: 
     agents = place / "_judge"
     agents.mkdir(exist_ok=True)
     shutil.copy(DEVELOP, agents / "develop.kos")
+    # The design checks develop.kos runs on icons, tokens and Studio plans.
+    shutil.copy(HERE / "design_check.py", agents / "design_check.py")
     # develop.kos asks no model; the app is told so by a binder that binds none.
     app = App(agents, bind_models=lambda program: {}, model_label="none", allow_folder=WORK, allow_shell=True)
     agent = next(key for key in app.agents() if key.startswith("develop"))
@@ -510,44 +529,51 @@ def main() -> None:
     shutil.copytree(before, after)
 
     router = start_router()
+    asked = text
     try:
-        ran = run_coder(after, place / "_agents", text)
+        for attempt in range(TRIES):
+            ran = run_coder(after, place / ("_agents" if attempt == 0 else f"_agents-{attempt + 1}"), asked)
+            # What running the tests and the engines left behind is not the change:
+            # compiled Python, traces and built engines stay out of the patch.
+            for left in [*after.rglob("__pycache__"), *after.rglob(".pytest_cache")]:
+                shutil.rmtree(left, ignore_errors=True)
+            for left in [*after.rglob("*.jsonl"), *after.rglob("*.exe")]:
+                if not (before / left.relative_to(after)).exists():
+                    left.unlink(missing_ok=True)
+            files = changed_files(before, after)
+            diff = subprocess.run(
+                ["git", "diff", "--no-index", "--no-prefix", "before", "kosika"],
+                cwd=place,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            ).stdout
+            diff = diff.replace("--- before/", "--- a/").replace("+++ kosika/", "+++ b/")
+            diff = (
+                "\n".join(
+                    line.replace("diff --git before/", "diff --git a/")
+                    .replace("diff --git kosika/", "diff --git a/", 1)
+                    .replace(" kosika/", " b/", 1)
+                    if line.startswith("diff --git")
+                    else line
+                    for line in diff.splitlines()
+                )
+                + "\n"
+            )
+            (place / "change.patch").write_text(diff, encoding="utf-8", newline="\n")
+            # The verdict, the report and the record of the run are Kosika's:
+            # develop.kos runs the checks and decides; this only hands it the facts.
+            judged = judge_in_kosika(place, text, files, ran, today)
+            if judged["passed"] or attempt + 1 == TRIES or ran["state"] != "done":
+                break
+            # One more try on the same copy, told what the checks found, as a
+            # reviewer would send a change back with notes.
+            asked = second_try(text, place / "report.md")
+            print(f"{place.name}: did not pass; trying once more with the checker's notes", flush=True)
     finally:
         if router is not None:
             router.terminate()
-
-    # What running the tests and the engines left behind is not the change:
-    # compiled Python, traces and built engines stay out of the patch.
-    for left in [*after.rglob("__pycache__"), *after.rglob(".pytest_cache")]:
-        shutil.rmtree(left, ignore_errors=True)
-    for left in [*after.rglob("*.jsonl"), *after.rglob("*.exe")]:
-        if not (before / left.relative_to(after)).exists():
-            left.unlink(missing_ok=True)
-    files = changed_files(before, after)
-    diff = subprocess.run(
-        ["git", "diff", "--no-index", "--no-prefix", "before", "kosika"],
-        cwd=place,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    ).stdout
-    diff = diff.replace("--- before/", "--- a/").replace("+++ kosika/", "+++ b/")
-    diff = (
-        "\n".join(
-            line.replace("diff --git before/", "diff --git a/")
-            .replace("diff --git kosika/", "diff --git a/", 1)
-            .replace(" kosika/", " b/", 1)
-            if line.startswith("diff --git")
-            else line
-            for line in diff.splitlines()
-        )
-        + "\n"
-    )
-    (place / "change.patch").write_text(diff, encoding="utf-8", newline="\n")
-    # The verdict, the report and the record of the run are Kosika's:
-    # develop.kos runs the checks and decides; this only hands it the facts.
-    judged = judge_in_kosika(place, text, files, ran, today)
     passed = judged["passed"]
     with (place / "report.md").open("a", encoding="utf-8") as report:
         report.write("\n\nTo bring it into Kosika: `git apply " + str(place / "change.patch") + "`\n")
