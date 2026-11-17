@@ -178,3 +178,14 @@ terminal belongs to the app. In an app's MCP settings it is:
 
 Kosika programs can use each other the same way:
 `kosika run other.kos --mcp hands="kosika serve-mcp plan.kos --only go -- ..."`.
+
+## The overlay: every agent at work, on one screen
+
+[overlay.py](overlay.py) shows each agent at work with its own pointer (its mascot's name on the tag), the words it is typing in a bubble under the tag, and a soft light along the screen's edges in the agents' colours. With several agents the colours travel round the edges and blend into each other; when one starts or stops the light changes over smoothly, and when all have stopped it fades out. Nothing in it takes a click or a key.
+
+The look is decided in Kosika by [overlay.kos](overlay.kos) (colour from the kit, tag from the mascot, arrow from cursor.kos, and how the light breathes, fades and travels). An agent says it is working by writing `~/.kosika/glow/NAME.json` (`name`, `at`, and optionally `doing`, `typing`, `x`, `y`); a beat older than six seconds means it stopped.
+
+    python overlay.py                       # stays up while agents come and go
+    python overlay.py --beat coder-1 --doing "fixing the parser" --typing "fn parse("
+    python demo_overlay.py                  # three agents for 40 seconds
+

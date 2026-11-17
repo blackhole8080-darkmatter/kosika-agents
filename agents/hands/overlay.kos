@@ -1,0 +1,116 @@
+// The look of the agents' overlay, decided in Kosika: one pointer for each
+// agent at work, the words it is typing beside it, and a soft light along the
+// screen's edges in the colours of the agents working. overlay.py only puts
+// what this says on the screen.
+//
+//   kosika run overlay.kos --workflow scene --input '{"a": {"names": ["coder-1", "scout"], "scale": 1.25}}'
+//
+// An agent's colour is the one its kit asks for (kits.kos), its tag is its
+// mascot's name (mascots.kos), and its pointer is cursor.kos's arrow, so the
+// pointer, the mascot on Studio's Coders page and the light along the edges
+// are always the same colour.
+
+import "kits.kos"
+import "pointer_look.kos"
+import "mascots.kos"
+
+export [Ask, Agent, Light, Look, agent_look, light, glow_colours]
+
+record Ask { names: Text[] scale: Number }
+
+record Agent {
+  name: Text
+  tag: Text
+  title: Text
+  colour: Text
+  idle: Text
+  typing: Text
+  idle_width: Number
+  typing_width: Number
+  height: Number
+  tip: Number
+}
+
+// How the light along the edges behaves. Sizes are at 100% scale; times are
+// in seconds.
+record Light {
+  edge: Number       // how far in from the screen's edge the light reaches
+  low: Number        // the dimmest a breath goes while anyone is working
+  high: Number       // the brightest
+  breath: Number     // one breath, dim to bright and back
+  fade_in: Number    // from nothing to lit when the first agent starts
+  fade_out: Number   // from lit to nothing when the last one stops
+  change: Number     // one blend of colours becoming another, as agents come and go
+  drift: Number      // how long the colours take to travel once round the screen
+  fresh: Number      // an agent quiet for longer than this has stopped
+  type_rate: Number  // letters a second the words beside a pointer appear at
+}
+
+record Look { agents: Agent[] light: Light }
+
+fn light() -> Light {
+  return {edge: 54, low: 0.38, high: 0.95, breath: 3.4, fade_in: 0.45, fade_out: 0.9,
+          change: 0.9, drift: 14, fresh: 6, type_rate: 38}
+}
+
+fn agent_look(name: Text, scale: Number) -> Agent {
+  let colour = colour_for(name, kit_named(name).colour)
+  let want: Want = {name: tag_for(name), scale: scale}
+  let idle = pointer_drawn(want, colour, "idle")
+  let typing = pointer_drawn(want, colour, "typing")
+  return {name: name, tag: tag_for(name), title: title_for(name), colour: colour,
+          idle: idle.svg, typing: typing.svg, idle_width: idle.width,
+          typing_width: typing.width, height: idle.height, tip: idle.tip}
+}
+
+// The colours the edges carry, one for each agent working, in the order they
+// are listed; the same colour twice is said once, so two agents in one
+// colour do not read as a stripe.
+fn glow_colours(names: Text[]) -> Text[] {
+  var out: Text[] = []
+  for name in names {
+    let c = colour_for(name, kit_named(name).colour)
+    if not out.contains(c) { out = out.append(c) }
+  }
+  return out
+}
+
+// The agents named, or with none named every agent that has a kit here.
+fn who(names: Text[]) -> Text[] {
+  if names.length() > 0 { return names }
+  return (for k in kits() { k.name })
+}
+
+workflow scene(a: Ask) -> Look {
+  shown = {agents: (for name in who(a.names) { agent_look(name, a.scale) }), light: light()}
+}
+
+test "every agent keeps its kit's colour on its pointer" {
+  a = agent_look("coder-1", 1)
+  expect a.colour == "#ff3ea5"
+  expect a.idle.contains("#ff3ea5") and a.typing.contains("#ff3ea5")
+  expect a.tag == tag_for("coder-1")
+}
+
+test "typing is a wider tag, and the tip does not move" {
+  a = agent_look("coder-2", 1.5)
+  expect a.typing_width > a.idle_width
+  expect a.typing.contains("typing") and not a.idle.contains("typing")
+}
+
+test "the edges carry one colour per agent, never the same one twice" {
+  expect glow_colours(["coder-1", "coder-2"]).length() == 2
+  expect glow_colours(["coder-1", "coder-1"]).length() == 1
+  expect glow_colours([]).length() == 0
+}
+
+test "with no names, every agent with a kit is drawn" {
+  expect who([]).length() == kits().length()
+  expect who(["scout"]) == ["scout"]
+}
+
+test "the light never goes fully dark or fully bright while agents work" {
+  l = light()
+  expect l.low > 0 and l.high <= 1 and l.low < l.high
+  expect l.change > 0 and l.fade_out >= l.fade_in
+}
