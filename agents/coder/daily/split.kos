@@ -1,0 +1,131 @@
+// Splitting a big request into small ones the coders can pass, in Kosika.
+//
+// The swarm passes small, exact requests with examples (a method, its
+// result for a few calls) and fails big, loose ones ("add a command
+// palette"). This asks a model once to cut a big request into steps, then
+// keeps only the steps that have the shape that passes: one new file or
+// method, said in a sentence, with at least two examples in backticks. A
+// step without them is dropped rather than sent to fail. No step is run
+// here; the steps become lines of the to-do list.
+//
+//   kosika run split.kos --workflow split --input big.json --model kosika-virtual ...
+//   big.json: {"b": {"request": "add a command palette to Studio", "most": 5}}
+
+export [Big, Step, Steps, Split, good_step, step_line, kept_steps, is_big]
+
+record Big { request: Text most: Number }
+record Step { change: Text examples: Text[] }
+record Steps { steps: Step[] }
+record Split { lines: Text[] dropped: Number }
+record SplitBrief { task: Text request: Text }
+
+model splitter {
+  input: SplitBrief
+  output: Steps
+  parameters: {
+    max_output_tokens: 2000
+  }
+}
+
+// A request is big when it gives no examples to test against, or is long.
+fn is_big(request: Text) -> Bool {
+  return not request.contains("examples:") or request.length() > 900
+}
+
+fn split_task(most: Number) -> Text {
+  return f"You split one programming request for Kosika (a language with a Python engine in kosika/ and a Go engine in native/) into at most {most} small steps. Each step is ONE change, said in one sentence in one of two forms. For one Text or Number value: add a Text method NAME(ARG: TYPE) that DOES WHAT, giving a TYPE (or add a Number method ...). For anything over a list, or anything else: add an exported function NAME(ARG: TYPE) -> TYPE to kosika/std/FILE.kos that DOES WHAT, like: add an exported function mean(numbers: Number[]) -> Number to kosika/std/stats.kos that gives the average of the numbers, and 0 for no numbers. Kosika's types are Text, Number, Bool, Text[] and Number[] (never List or float). Do not name Python files or Python types. Give each step two to four examples, each written exactly as `call` is `value` with backticks, like `\"hi\".shout()` is `\"HI\"`. Order the steps so each builds on the ones before it. Leave out anything that cannot be tested by such examples."
+}
+
+// An example as the coder reads it: `call` is `value`. Models often leave
+// the backticks out ("[1,2].mean() is 1.5"); they are put in when the
+// example splits cleanly in two at " is ".
+fn tidy_example(e: Text) -> Text {
+  let t = e.trim().trim_marks(".;")
+  if t.starts_with("`") { return t }
+  let parts = t.split(" is ")
+  if parts.length() != 2 { return t }
+  return "`" + parts[0].trim() + "` is `" + parts[1].trim() + "`"
+}
+
+fn tidy(s: Step) -> Step {
+  return {change: s.change, examples: (for e in s.examples { tidy_example(e) })}
+}
+
+// The shape that passes: one sentence, not too long, two or more examples
+// written as `call` is `value`.
+fn good_step(s: Step) -> Bool {
+  if s.change.trim().length() < 20 or s.change.length() > 400 { return false }
+  // Said the way the coder reads a request: a Text or Number method giving a
+  // Kosika type, or an exported function in a Kosika file of the library.
+  let method = (s.change.contains(" Text method ") or s.change.contains(" Number method ")) and s.change.contains("giving a")
+  let function = s.change.contains("exported function") and s.change.contains("kosika/std/") and s.change.contains(".kos")
+  if not method and not function { return false }
+  if s.change.contains("List[") or s.change.contains("float") { return false }
+  var good = 0
+  for e in s.examples {
+    if e.starts_with("`") and e.contains("` is `") { good = good + 1 }
+  }
+  return good >= 2
+}
+
+// One line of the to-do list, in the form the coder reads its examples from.
+fn step_line(s: Step) -> Text {
+  let change = s.change.trim().trim_marks(".;")
+  let shown = (for e in s.examples { e.trim().trim_marks(".;") }).join(", ")
+  return "- [ ] " + change + "; examples: " + shown
+}
+
+fn kept_steps(steps: Steps, most: Number) -> Split {
+  var lines: Text[] = []
+  var dropped = 0
+  for raw in steps.steps {
+    let s = tidy(raw)
+    if good_step(s) and lines.length() < most { lines = lines.append(step_line(s)) } else { dropped = dropped + 1 }
+  }
+  return {lines: lines, dropped: dropped}
+}
+
+fn no_steps() -> Steps { return {steps: []} }
+
+workflow split(b: Big) -> Split {
+  budget 2 model calls, 300 seconds
+  steps = use_model splitter(split_task(b.most), b.request) retry 1 otherwise no_steps()
+  out   = kept_steps(steps, b.most)
+}
+
+test "a request with examples is small; one without, or a long one, is big" {
+  expect not is_big("add a Text method shout() that gives the text in capitals; examples: `\"hi\".shout()` is `\"HI\"`")
+  expect is_big("add a command palette to Studio")
+}
+
+test "only steps that can be tested become lines of the list" {
+  good: Step = {change: "add a Text method shout() to kosika/builtin_methods.py and native/methods.go that gives the text in capitals, giving a Text.",
+                examples: ["`\"hi\".shout()` is `\"HI\"`", "`\"\".shout()` is `\"\"`"]}
+  vague: Step = {change: "make the palette look nice", examples: []}
+  python: Step = {change: "add a function mean(nums: List[float]) -> float to kosika/builtin_functions.py", examples: ["`mean([1, 2])` is `1.5`", "`mean([4])` is `4`"]}
+  one: Step = {change: "add a Number method twice() that gives the number times 2, giving a Number", examples: ["`2.twice()` is `4`"]}
+  kept = kept_steps({steps: [good, vague, one, python]}, 5)
+  expect kept.lines.length() == 1
+  expect kept.dropped == 3
+  expect kept.lines[0].starts_with("- [ ] add a Text method shout()")
+  expect kept.lines[0].contains("giving a Text; examples: `\"hi\".shout()` is `\"HI\"`, `\"\".shout()` is `\"\"`")
+}
+
+test "examples without backticks are given them" {
+  expect tidy_example("[1,2,3].mean() is 2") == "`[1,2,3].mean()` is `2`"
+  expect tidy_example("`2.twice()` is `4`") == "`2.twice()` is `4`"
+  expect tidy_example("a is b is c") == "a is b is c"
+}
+
+test "a list is worked on by a function in the library, not a list method" {
+  listy: Step = {change: "add a Number[] method mean() that gives the average, giving a Number", examples: ["`[1, 2].mean()` is `1.5`", "`[4].mean()` is `4`"]}
+  lib: Step = {change: "add an exported function mean(numbers: Number[]) -> Number to kosika/std/stats.kos that gives the average of the numbers", examples: ["`mean([1, 2])` is `1.5`", "`mean([4])` is `4`"]}
+  expect not good_step(listy)
+  expect good_step(lib)
+}
+
+test "no more steps than asked for" {
+  s: Step = {change: "add a Number method twice() that gives the number times 2, giving a Number", examples: ["`2.twice()` is `4`", "`0.twice()` is `0`"]}
+  expect kept_steps({steps: [s, s, s]}, 2).lines.length() == 2
+  expect kept_steps({steps: [s, s, s]}, 2).dropped == 1
+}

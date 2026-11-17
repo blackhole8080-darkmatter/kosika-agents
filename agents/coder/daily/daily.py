@@ -438,18 +438,72 @@ def mark_line(text: str, mark: str, note: str = "") -> None:
         lock.rmdir()
 
 
+SPLIT = HERE / "split.kos"
+#: A request split into small ones is kept in the list with this mark, so it
+#: is not taken again and the list still says where its steps came from.
+SPLIT_MARK = "- [>] "
+
+
+def is_big(text: str) -> bool:
+    """As split.kos says: no examples to test against, or very long."""
+    return "examples:" not in text or len(text) > 900
+
+
+def split_big(text: str, most: int = 5) -> list[str]:
+    """split.kos's small requests for one big one ("- [ ] ..." lines), or none."""
+    import ast
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as work:
+        ask = Path(work) / "big.json"
+        ask.write_text(json.dumps({"b": {"request": text, "most": most}}), encoding="utf-8")
+        done = subprocess.run([sys.executable, "-m", "kosika.cli", "run", str(SPLIT), "--workflow", "split", "--input", str(ask),
+                               "--model", "kosika-virtual", "--model-url", f"http://127.0.0.1:{PORT}/v1"],
+                              cwd=work, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600,
+                              env={**os.environ, "PYTHONPATH": str(REPO)})
+    for line in reversed(done.stdout.splitlines()):
+        if line.strip().startswith("{") and "lines" in line:
+            return [str(item) for item in ast.literal_eval(line.strip()).get("lines", [])]
+    return []
+
+
+def split_open_requests() -> int:
+    """Each open request too big to pass as it is becomes the small ones
+    split.kos makes of it, put in its place. Returns how many were split."""
+    lines = TODO.read_text(encoding="utf-8").splitlines()
+    out, split = [], 0
+    for line in lines:
+        text = line[6:].strip()
+        if line.startswith("- [ ] ") and is_big(text):
+            small = split_big(text)
+            if small:
+                out.append(SPLIT_MARK + text + f" (split into {len(small)} small requests below)")
+                out.extend(small)
+                split += 1
+                continue
+        out.append(line)
+    if split:
+        TODO.write_text("\n".join(out) + "\n", encoding="utf-8")
+    return split
+
+
 def swarm(size: int) -> None:
     """Several coders at once, one request each, sharing the virtual model
     pool. Each works in its own copy and is checked on its own; nothing waits
     for the others but the end of the run."""
+    router = start_router()
+    # Big requests are split into small ones first: the shape that passes.
+    if split_open_requests():
+        print("Split big requests into small ones (split.kos).", flush=True)
     lines = TODO.read_text(encoding="utf-8").splitlines()
     open_ones = [line[6:].strip() for line in lines if line.startswith("- [ ] ")][:size]
     if not open_ones:
         print("Nothing is open in todo.md.")
+        if router is not None:
+            router.terminate()
         return
     for text in open_ones:
         mark_line(text, TAKEN)
-    router = start_router()
     started = time.monotonic()
     alone = dict(os.environ, KOSIKA_SWARM="1") if len(open_ones) > 1 else dict(os.environ)
     # Each member works as one of the kits' agents, so it has its own
