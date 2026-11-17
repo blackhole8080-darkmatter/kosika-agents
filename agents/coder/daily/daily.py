@@ -402,6 +402,12 @@ def main() -> None:
     # A Go build folder of its own: coders of a swarm building at once in
     # one shared folder lock each other out ("Access is denied").
     os.environ["GOCACHE"] = str(place / ".gocache")
+    # Started warm: a cold build of the Go engine takes minutes when coders
+    # build at once, longer than a step may run. A copy of a cache an earlier
+    # run left is cheap, and each coder still builds in its own.
+    warm = WORK / ".gocache-warm"
+    if warm.is_dir():
+        shutil.copytree(warm, place / ".gocache", dirs_exist_ok=True)
     # And a temporary folder of its own: Go builds in TEMP, which a coder
     # started from some Pythons may not write ("Access is denied").
     (place / ".tmp").mkdir(exist_ok=True)
