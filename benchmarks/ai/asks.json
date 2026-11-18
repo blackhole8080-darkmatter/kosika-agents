@@ -1,0 +1,25 @@
+{
+  "about": "Kosika AI's scorecard: fixed asks, each judged by checks that do not trust the agent's own report. 'has' are words or numbers the answer must contain (any one of each inner list); 'tool' is a tool some step must have used and passed; 'code' means a step's program is tested again here.",
+  "asks": [
+    {"id": "pct", "kind": "maths", "text": "What is 18% of 2450, and is it more than 400?", "has": [["441"]], "tool": "calc"},
+    {"id": "train", "kind": "maths", "text": "A train goes 180 km in 2.5 hours. What is its speed, and how long would it take to go 420 km at that speed?", "has": [["72"], ["5.83"]], "tool": "calc"},
+    {"id": "tip", "kind": "maths", "text": "A meal costs 640 kr. How much is a 15% tip, and what is the total?", "has": [["96"], ["736"]], "tool": "calc"},
+    {"id": "circle", "kind": "maths", "text": "What is the area of a circle with radius 7 cm?", "has": [["153.9"]], "tool": "calc"},
+    {"id": "average", "kind": "maths", "text": "What is the average of 12, 17, 23 and 40?", "has": [["23"]], "tool": "calc"},
+    {"id": "compound", "kind": "maths", "text": "If I save 10000 kr at 5% interest a year, compounded yearly, how much do I have after 3 years?", "has": [["11576.25", "11 576.25", "11,576.25"]], "tool": "calc"},
+    {"id": "vowels", "kind": "code", "text": "Write a function in Kosika that counts the vowels in a text.", "has": [], "tool": "code", "code": true},
+    {"id": "reverse", "kind": "code", "text": "Write a function in Kosika that reverses the words of a sentence.", "has": [], "tool": "code", "code": true},
+    {"id": "fizz", "kind": "code", "text": "Write a function in Kosika that gives fizz, buzz, fizzbuzz or the number as text for a number.", "has": [], "tool": "code", "code": true},
+    {"id": "prime", "kind": "code", "text": "Write a function in Kosika that says whether a number is prime.", "has": [], "tool": "code", "code": true},
+    {"id": "largest", "kind": "code", "text": "Write a function in Kosika that gives the largest number in a list, and 0 for an empty list.", "has": [], "tool": "code", "code": true},
+    {"id": "graphs", "kind": "project", "text": "Plan how I can learn graph theory in two weeks, with a short daily schedule.", "has": [["day 1", "day one", "week 1"], ["path", "tree", "degree"]], "tool": "think"},
+    {"id": "website", "kind": "project", "text": "Plan the steps to build a small personal website for my projects.", "has": [["html", "page"], ["publish", "host", "deploy"]], "tool": "think"},
+    {"id": "exam", "kind": "project", "text": "Help me build a one-week revision schedule for a discrete maths exam.", "has": [["induction", "logic", "sets", "graph"]], "tool": "think"},
+    {"id": "seasons", "kind": "question", "text": "Why do we have seasons on Earth?", "has": [["tilt", "tilted", "axis"]], "tool": "think"},
+    {"id": "sky", "kind": "question", "text": "Why is the sky blue?", "has": [["scatter"]], "tool": "think"},
+    {"id": "qubit", "kind": "question", "text": "What is a qubit, in two sentences?", "has": [["superposition", "0 and 1", "both"]], "tool": "think"},
+    {"id": "induction", "kind": "question", "text": "Explain proof by induction simply.", "has": [["base"], ["step", "n+1", "n + 1"]], "tool": "think"},
+    {"id": "spec", "kind": "question", "text": "What is specification gaming in AI safety?", "has": [["reward", "objective", "goal"]], "tool": "think"},
+    {"id": "mixed", "kind": "maths", "text": "A phone costs 8990 kr and drops 12% in price. What is the new price, and why do shops drop prices?", "has": [["7911.2", "7 911.2", "7,911.2"]], "tool": "calc"}
+  ]
+}
