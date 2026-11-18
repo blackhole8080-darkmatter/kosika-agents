@@ -45,6 +45,47 @@ AGENT = "Kosika/0.1 (virtual model)"
 NAME = "kosika-virtual"
 
 
+def json_in(text: str) -> str | None:
+    """The first whole JSON object in text, as text, or None."""
+    start = text.find("{")
+    while start != -1:
+        depth = 0
+        quoted = escaped = False
+        for at in range(start, len(text)):
+            ch = text[at]
+            if quoted:
+                escaped = ch == "\\" and not escaped
+                if ch == '"' and not escaped:
+                    quoted = False
+                continue
+            if ch == '"':
+                quoted = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    piece = text[start:at + 1]
+                    try:
+                        json.loads(piece)
+                        return piece
+                    except ValueError:
+                        break
+        start = text.find("{", start + 1)
+    return None
+
+
+def is_refused(error: Exception) -> bool:
+    """Whether a call failed because nothing was listening at all."""
+    reason = getattr(error, "reason", error)
+    return isinstance(reason, ConnectionRefusedError) or "refused" in str(reason).lower() or "10061" in str(reason)
+
+
+def reply_of(text: str) -> dict:
+    """A chat reply carrying text, as an OpenAI-shaped service gives one."""
+    return {"choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}]}
+
+
 def load(path: Path) -> dict:
     config = json.loads(path.read_text(encoding="utf-8"))
     for model in config["models"].values():
@@ -146,8 +187,47 @@ class Router:
             model["url"], data=json.dumps(sent).encode(), method="POST",
             headers={**({"Authorization": "Bearer " + os.environ[model["key"]]} if model.get("key") else {}),
                      "Content-Type": "application/json", "User-Agent": AGENT})
+        try:
+            with urllib.request.urlopen(request, timeout=model.get("timeout_seconds", self.config["timeout_seconds"])) as answer:
+                return json.load(answer)
+        except urllib.error.HTTPError as error:
+            said = error.read().decode("utf-8", "replace")
+            if error.code == 400 and "Failed to generate JSON" in said and "response_format" in sent:
+                return self.json_again(name, sent, said, error)
+            # Read once above, so the caller can still say why.
+            error.read = lambda said=said: said.encode()
+            raise
+
+    def json_again(self, name: str, sent: dict, said: str, error: urllib.error.HTTPError) -> dict:
+        """Groq refuses a reply it asked for as JSON when its own check of
+        the JSON fails, though the model's words are often good JSON with a
+        little around them: Groq gives them back as `failed_generation`.
+        Take the JSON out of them; failing that, ask the same model once
+        without JSON mode, telling it to answer with only the object."""
+        try:
+            failed = json.loads(said).get("error", {}).get("failed_generation") or ""
+        except ValueError:
+            failed = ""
+        found = json_in(failed)
+        if found is not None:
+            return reply_of(found)
+        plain = {k: v for k, v in sent.items() if k != "response_format"}
+        messages = list(plain.get("messages") or [])
+        messages.append({"role": "user", "content": "Reply with only one JSON object, and nothing before or after it."})
+        plain["messages"] = messages
+        model = self.config["models"][name]
+        request = urllib.request.Request(
+            model["url"], data=json.dumps(plain).encode(), method="POST",
+            headers={**({"Authorization": "Bearer " + os.environ[model["key"]]} if model.get("key") else {}),
+                     "Content-Type": "application/json", "User-Agent": AGENT})
         with urllib.request.urlopen(request, timeout=model.get("timeout_seconds", self.config["timeout_seconds"])) as answer:
-            return json.load(answer)
+            reply = json.load(answer)
+        try:
+            text = reply["choices"][0]["message"].get("content") or ""
+        except (KeyError, IndexError, TypeError):
+            return reply
+        found = json_in(text)
+        return reply_of(found) if found is not None else reply
 
     def answer(self, body: dict) -> tuple[int, dict]:
         start, why = self.difficulty(body)
@@ -189,6 +269,12 @@ class Router:
                 continue
             except (urllib.error.URLError, TimeoutError, ValueError) as error:
                 tried.append({"model": name, "error": str(error)[:200], "ms": int((time.time() - t0) * 1000)})
+                if is_refused(error):
+                    # Nothing listens there (Ollama or a model server not
+                    # started): leave it out for a minute, not a round trip
+                    # on every request.
+                    with self.lock:
+                        self.cool[name] = time.time() + 60
                 continue
             wrong = self.problem(body, reply)
             tried.append({"model": name, "status": 200, "ms": int((time.time() - t0) * 1000), "problem": wrong})
@@ -227,6 +313,12 @@ def handler(router: Router):
                 return self.send(404, {"error": {"message": "not found"}})
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
             code, reply = router.answer(body)
+            if code == 502 and str(body.get("model") or "").endswith(":soft"):
+                # A program asking for "kosika-virtual:soft" would rather
+                # have an empty answer, which its own checks refuse and its
+                # `otherwise` handles, than a failure that stops the whole
+                # run and is asked again for minutes first.
+                code, reply = 200, {**reply_of(""), "model": NAME, "kosika_gave_up": True}
             if not body.get("stream") or code != 200:
                 return self.send(code, reply)
             # A streamed request gets the checked reply as one piece: nothing
