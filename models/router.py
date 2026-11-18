@@ -110,6 +110,23 @@ def reason_of(said: str) -> str:
     return " ".join((message or said).split())[:160]
 
 
+def hollow(text: str) -> bool:
+    """Whether a reply is JSON with nothing in it: {}, [], or only blank fields."""
+    try:
+        value = json.loads(text.strip())
+    except ValueError:
+        return False
+
+    def blank(v) -> bool:
+        if isinstance(v, dict):
+            return all(blank(x) for x in v.values())
+        if isinstance(v, list):
+            return all(blank(x) for x in v)
+        return v is None or (isinstance(v, str) and not v.strip())
+
+    return isinstance(value, (dict, list)) and blank(value)
+
+
 def used_up_for(error: urllib.error.HTTPError) -> float:
     """Seconds until a daily allowance comes back, or 0 for a short limit.
 
@@ -172,6 +189,10 @@ class Router:
         calls = message.get("tool_calls") or []
         if not text.strip() and not calls:
             return "empty reply" + (" (ran out of tokens)" if choice.get("finish_reason") == "length" else "")
+        if not calls and hollow(text):
+            # Ollama in JSON mode answers {} when it has nothing to say; a
+            # record with every field blank is no answer either.
+            return "empty JSON reply"
         offered = {t.get("function", {}).get("name") for t in body.get("tools") or []}
         for call in calls:
             name = call.get("function", {}).get("name")
@@ -286,6 +307,8 @@ class Router:
                 step = {"model": name, "status": error.code, "ms": int((time.time() - t0) * 1000)}
                 if error.code != 429 and error.said:
                     step["why"] = reason_of(error.said)
+                if error.code == 429 and daily:
+                    step["why"] = f"daily allowance used up; resting {daily / 60:.0f} min"
                 tried.append(step)
                 continue
             except (urllib.error.URLError, TimeoutError, ValueError) as error:
