@@ -97,7 +97,7 @@ def main() -> None:
             try:
                 ran = subprocess.run([args.engine, "run", str(ROOT / "agents" / "ai" / "main.kos"), "--input", str(given),
                                       "--model", args.model, "--model-url", args.url, "--model-timeout", "120",
-                                      "--max-output-tokens", "2000"],
+                                      "--max-output-tokens", "2000", "--allow-site", "en.wikipedia.org"],
                                      capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=args.cap, cwd=ROOT)
                 report, stderr, code = report_of(ran.stdout), ran.stderr.strip(), ran.returncode
             except subprocess.TimeoutExpired:

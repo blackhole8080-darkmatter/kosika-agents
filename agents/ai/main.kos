@@ -19,6 +19,11 @@
 //   think  the model answers in words; a second model must quote where
 //          the answer does what the step asked, and a quote that is not
 //          in the answer is refused
+//   look   Kosika reads a Wikipedia page (only with --allow-site
+//          en.wikipedia.org); the model answers from it and must quote the
+//          page, and every quote is found on the page word for word
+//   draw   Kosika Designs draws a graph, surface, curve or shape from the
+//          formula (std/designs_plot); every point is computed, no model
 //
 // The reply is written last, from the checked results only, and must
 // carry every number Kosika computed exactly as computed. The report says
@@ -26,6 +31,7 @@
 // confidence decides anything here.
 
 import "std/math.kos"
+import "std/designs_plot.kos"
 
 export [Ask, Step, Plan, Done, Report, kind_of, plan_ok, fallback_plan, formula_ok, code_shape, reply_ok, main]
 
@@ -45,7 +51,13 @@ record Thought { text: Text ok: Bool reason: Text tries: Number }
 record Again { w: Work first: Text reason: Text }
 record Redo { ask: Text goal: Text failed: Done before: Text }
 record Done { n: Number tool: Text what: Text answer: Text check: Text ok: Bool ran: Bool }
-record Report { ask: Text kind: Text goal: Text planned_by: Text steps: Done[] answer: Text passed: Number failed: Number note: Text }
+record Report { ask: Text kind: Text goal: Text planned_by: Text steps: Done[] answer: Text passed: Number failed: Number note: Text pictures: Text[] }
+
+// A page as Kosika's web tool reads it, and an answer taken from it.
+record PageAsk { url: Text }
+record Page { url: Text title: Text text: Text }
+record Quoted { answer: Text quotes: Text[] }
+record Looked { w: Work page: Page }
 
 // What the engine finds wrong with a program before it is kept.
 record KFile { path: Text text: Text before: Text exists: Bool }
@@ -88,6 +100,18 @@ model replanner {
   parameters: { max_output_tokens: 400 }
 }
 
+model finder {
+  input: Job
+  output: Said as text
+  parameters: { max_output_tokens: 60 }
+}
+
+model reader {
+  input: Job
+  output: Quoted
+  parameters: { max_output_tokens: 800 }
+}
+
 model writer {
   input: Job
   output: Said as text
@@ -108,6 +132,21 @@ tool code_check {
 
 agent helper {
   can: [code_check]
+  max_steps: 1
+}
+
+// One page from the web, read only: the run must allow the site
+// (--allow-site en.wikipedia.org), or the step fails and says so.
+tool web_page {
+  source system "web"
+  operation: "fetch"
+  access: observe
+  input: PageAsk
+  output: Page
+}
+
+agent browser {
+  can: [web_page]
   max_steps: 1
 }
 
@@ -134,6 +173,7 @@ fn has_digit(t: Text) -> Bool {
 fn kind_of(text: Text) -> Text {
   let t = text.lower()
   if has_any(t, ["write a function", "write a program", "write code", "in kosika", ".kos", "a function that", "a program that"]) { return "code" }
+  if pl_wants(text) and has_any(t, ["plot", "graph", "draw", "sketch", "show", "visuali"]) { return "drawing" }
   if has_digit(t) and has_any(t, ["+", "*", "/", "^", "%", "percent", "how much", "how many", "how long", "how far", "how fast", "speed", "total", "average", "sum of", "times", "divided", "per ", " km", " kg", " hours", " minutes", "cost", "price"]) { return "maths" }
   if has_any(t, ["plan", "project", "steps to", "schedule", "roadmap", "how do i", "how should i", "help me build"]) { return "project" }
   return "question"
@@ -146,10 +186,10 @@ fn steps_most(most: Number) -> Number {
 
 // ---------------------------------------------------------------- the plan, and its check
 
-fn tools() -> Text[] { return ["think", "calc", "code"] }
+fn tools() -> Text[] { return ["think", "calc", "code", "look", "draw"] }
 
 fn plan_task(kind: Text, most: Number) -> Text {
-  return f"You are the planner of Kosika AI. Split the ask into at most {most} small steps, in order; use one step when one is enough. Each step uses exactly one tool. calc: a number worked out from a formula (Kosika computes it, so never work the number out yourself; one formula per step). code: a small program in Kosika with tests. think: reasoning, explaining or writing in words. Give each step: tool (calc, code or think), what (one sentence saying what this step produces), done_when (one sentence: how to tell it is done). The ask looks like: {kind}. Answer as JSON: {{\"goal\": \"...\", \"steps\": [{{\"tool\": \"...\", \"what\": \"...\", \"done_when\": \"...\"}}]}}"
+  return f"You are the planner of Kosika AI. Split the ask into at most {most} small steps, in order; use one step when one is enough. Each step uses exactly one tool. calc: a number worked out from a formula (Kosika computes it, so never work the number out yourself; one formula per step, and when the ask wants several numbers, such as a tip and a total, give each number its own calc step). code: a small program in Kosika with tests. look: a fact found on a Wikipedia page and quoted from it (say in what which page or topic to read). draw: a drawing of a formula or shape by Kosika Designs (say in what the formula, such as plot y = x^2 - 3x). think: reasoning, explaining or writing in words. Give each step: tool (calc, code, look, draw or think), what (one sentence saying what this step produces), done_when (one sentence: how to tell it is done). The ask looks like: {kind}. Answer as JSON: {{\"goal\": \"...\", \"steps\": [{{\"tool\": \"...\", \"what\": \"...\", \"done_when\": \"...\"}}]}}"
 }
 
 // "" when the plan can run; otherwise why not, which the planner is shown.
@@ -158,7 +198,7 @@ fn plan_ok(plan: Plan, most: Number) -> Text {
   if plan.steps.is_empty() { return "give at least one step" }
   if plan.steps.length() > most { return f"give at most {most} steps" }
   for s in plan.steps {
-    if not tools().contains(s.tool) { return f"a step's tool must be calc, code or think, not {s.tool}" }
+    if not tools().contains(s.tool) { return f"a step's tool must be calc, code, look, draw or think, not {s.tool}" }
     if s.what.trim().length() < 8 or s.what.length() > 400 { return "say what each step produces in one sentence" }
     if s.done_when.trim().length() < 5 { return "say for each step how to tell it is done" }
   }
@@ -171,6 +211,7 @@ fn fallback_plan(text: Text, kind: Text) -> Plan {
   let tool = match kind {
     case "maths" { "calc" }
     case "code" { "code" }
+    case "drawing" { "draw" }
     case _ { "think" }
   }
   return {goal: text, steps: [{tool: tool, what: text, done_when: "the ask is answered"}]}
@@ -418,6 +459,107 @@ workflow do_code(w: Work) -> Done {
   done  = code_done(w, tried)
 }
 
+// ---------------------------------------------------------------- look: a fact read on the web, quoted word for word
+
+fn look_brief(w: Work) -> Brief {
+  return {task: "Name the one Wikipedia article that would answer this step: give only its title, in a few words, such as Tide or Speed of light. Answer with the title alone.",
+          ask: w.ask, step: w.step.what, before: ""}
+}
+
+fn topic_ok(text: Text) -> Text {
+  let t = text.trim()
+  if t.length() < 2 { return "give the article's title" }
+  if t.length() > 80 or t.contains("\n") { return "give only the title, in a few words" }
+  return junk(t)
+}
+
+// The page's title as a search: letters, digits and spaces only.
+fn search_words(text: Text) -> Text {
+  var out = ""
+  for c in text.trim().chars() {
+    let low = c.lower()
+    if "abcdefghijklmnopqrstuvwxyz0123456789".contains(low) and not low.is_empty() {
+      out = out + c
+    } else if c == " " or c == "-" or c == "_" {
+      out = out + "+"
+    }
+  }
+  return out
+}
+
+fn page_url(topic: Text) -> Text {
+  return "https://en.wikipedia.org/wiki/Special:Search?go=Go&search=" + search_words(topic)
+}
+
+// Text as it is compared: lower case, with runs of white space made one.
+fn flat(t: Text) -> Text {
+  return t.lower().replace("\n", " ").replace("\t", " ").words().join(" ")
+}
+
+fn read_brief(l: Looked) -> Brief {
+  return {task: "Answer this step from the page below, and only from it. Then copy one to three short passages from the page, word for word, that show the answer is right. If the page does not answer it, say so and give no passages. Answer as JSON: {\"answer\": \"...\", \"quotes\": [\"...\"]}\n\nThe page, " + l.page.title + " (" + l.page.url + "):\n" + clip(l.page.text, 6000),
+          ask: l.w.ask, step: l.w.step.what, before: ""}
+}
+
+// "" when the answer stands on the page: every quote is found there.
+fn quotes_ok(q: Quoted, page: Text) -> Text {
+  if q.answer.trim().length() < 2 { return "give the answer" }
+  let bad = junk(q.answer)
+  if not bad.is_empty() { return bad }
+  if q.quotes.is_empty() { return "copy at least one passage from the page that shows the answer" }
+  let seen = flat(clip(page, 6000))
+  for t in q.quotes {
+    if flat(t).length() < 12 { return "copy a longer passage, a whole phrase from the page" }
+    if not seen.contains(flat(t)) { return "this passage is not on the page word for word: " + clip(t, 120) }
+  }
+  return ""
+}
+
+workflow read_page(l: Looked) -> Quoted {
+  said = use_model reader(job(read_brief(l))) verify quotes_ok(said, l.page.text) retry 1 otherwise {answer: "", quotes: []}
+}
+
+fn look_done(w: Work, page: Page, q: Quoted) -> Done {
+  if page.text.trim().is_empty() {
+    return {n: w.n, tool: "look", what: w.step.what, answer: "Kosika could not read the web for this step.", check: "not checked: no page could be read (the run must allow en.wikipedia.org)", ok: false, ran: true}
+  }
+  if q.quotes.is_empty() {
+    return {n: w.n, tool: "look", what: w.step.what, answer: "The page " + page.title + " did not give an answer that could be quoted.", check: "not checked: no passage the model gave was found on " + page.url, ok: false, ran: true}
+  }
+  return {n: w.n, tool: "look", what: w.step.what, answer: q.answer + "\nSource: " + page.title + " (" + page.url + "): \"" + clip(q.quotes[0], 300) + "\"",
+          check: f"every passage quoted ({q.quotes.length()}) was found word for word on {page.url}", ok: true, ran: true}
+}
+
+workflow do_look(w: Work) -> Done {
+  topic = use_model finder(job(look_brief(w))) verify topic_ok(topic.text) retry 1 otherwise {text: clip(w.step.what, 60)}
+  page  = execute browser.web_page(url: page_url(topic.text)) otherwise {url: "", title: "", text: ""}
+  said  = match page.text.trim().is_empty() {
+    case true { {answer: "", quotes: []} }
+    case _ { call read_page({w: w, page: page}) }
+  }
+  done  = look_done(w, page, said)
+}
+
+// ---------------------------------------------------------------- draw: Kosika Designs draws it, no model
+
+// The text to draw: the step's own words when Designs can read them, else the ask's.
+fn drawn_text(w: Work) -> Text {
+  if pl_wants(w.step.what) and pl_for(w.step.what).problems.is_empty() { return w.step.what }
+  return w.ask
+}
+
+fn do_draw(w: Work) -> Done {
+  let text = drawn_text(w)
+  let f = pl_for(text)
+  if not f.problems.is_empty() or f.svg.is_empty() {
+    let why = if f.problems.is_empty() { "no drawing came back" } else { f.problems[0] }
+    return {n: w.n, tool: "draw", what: text, answer: "Kosika Designs could not draw this: " + clip(why, 200), check: "not drawn", ok: false, ran: true}
+  }
+  let shown_as = if f.notation.is_empty() { "" } else { " (" + clip(f.formula, 120) + ")" }
+  return {n: w.n, tool: "draw", what: text, answer: "A drawing by Kosika Designs: " + f.title + shown_as + ". It is in the report's pictures.",
+          check: "drawn by Kosika Designs from the formula; every point was computed, none guessed", ok: true, ran: true}
+}
+
 // ---------------------------------------------------------------- think: answered in words, read by a second model
 
 fn think_brief(w: Work) -> Brief {
@@ -517,7 +659,7 @@ fn first_failed(done: Done[]) -> Done {
 }
 
 fn redo_brief(r: Redo) -> Brief {
-  return {task: f"A step of the plan failed. Give ONE new step that reaches the same result another way, using one tool: calc (a number from a formula Kosika computes), code (a small Kosika program with tests) or think (words). Say what it produces and how to tell it is done. The failed step was: {r.failed.tool}: {r.failed.what}. Why it failed: {clip(r.failed.check, 300)}. Answer as JSON: {{\"tool\": \"...\", \"what\": \"...\", \"done_when\": \"...\"}}",
+  return {task: f"A step of the plan failed. Give ONE new step that reaches the same result another way, using one tool: calc (a number from a formula Kosika computes), code (a small Kosika program with tests), look (a fact quoted from a Wikipedia page), draw (a drawing of a formula by Kosika Designs) or think (words). Say what it produces and how to tell it is done. The failed step was: {r.failed.tool}: {r.failed.what}. Why it failed: {clip(r.failed.check, 300)}. Answer as JSON: {{\"tool\": \"...\", \"what\": \"...\", \"done_when\": \"...\"}}",
           ask: r.ask, step: r.goal, before: r.before}
 }
 
@@ -536,6 +678,8 @@ workflow redo(r: Redo) -> Done {
     case "calc" { call do_calc(w5) }
     case "code" { call do_code(w5) }
     case "think" { call do_think(w5) }
+    case "look" { call do_look(w5) }
+    case "draw" { do_draw(w5) }
     case _ { skip(w5) }
   }
 }
@@ -595,7 +739,8 @@ fn report_of(ask: Ask, kind: Text, plan: Plan, done: Done[], answer: Text) -> Re
   let failed = steps.length() - passed
   let by = if plan == fallback_plan(ask.text, kind) { "Kosika (no model's plan passed its check)" } else { "a model, checked by Kosika" }
   let note = if failed == 0 { f"All {passed} steps passed their checks." } else { f"{passed} of {steps.length()} steps passed their checks; the rest are marked unchecked, and the reply says so." }
-  return {ask: ask.text, kind: kind, goal: plan.goal, planned_by: by, steps: steps, answer: answer, passed: passed, failed: failed, note: note}
+  let pictures = for d in steps where d.ok and d.tool == "draw" { pl_for(d.what).svg }
+  return {ask: ask.text, kind: kind, goal: plan.goal, planned_by: by, steps: steps, answer: answer, passed: passed, failed: failed, note: note, pictures: pictures}
 }
 
 // ---------------------------------------------------------------- the loop
@@ -610,6 +755,8 @@ workflow main(ask: Ask) -> Report {
     case "calc" { call do_calc(w1) }
     case "code" { call do_code(w1) }
     case "think" { call do_think(w1) }
+    case "look" { call do_look(w1) }
+    case "draw" { do_draw(w1) }
     case _ { skip(w1) }
   }
   w2    = work_at(ask.text, plan, 1, [d1])
@@ -617,6 +764,8 @@ workflow main(ask: Ask) -> Report {
     case "calc" { call do_calc(w2) }
     case "code" { call do_code(w2) }
     case "think" { call do_think(w2) }
+    case "look" { call do_look(w2) }
+    case "draw" { do_draw(w2) }
     case _ { skip(w2) }
   }
   w3    = work_at(ask.text, plan, 2, [d1, d2])
@@ -624,6 +773,8 @@ workflow main(ask: Ask) -> Report {
     case "calc" { call do_calc(w3) }
     case "code" { call do_code(w3) }
     case "think" { call do_think(w3) }
+    case "look" { call do_look(w3) }
+    case "draw" { do_draw(w3) }
     case _ { skip(w3) }
   }
   w4    = work_at(ask.text, plan, 3, [d1, d2, d3])
@@ -631,6 +782,8 @@ workflow main(ask: Ask) -> Report {
     case "calc" { call do_calc(w4) }
     case "code" { call do_code(w4) }
     case "think" { call do_think(w4) }
+    case "look" { call do_look(w4) }
+    case "draw" { do_draw(w4) }
     case _ { skip(w4) }
   }
   missed = first_failed([d1, d2, d3, d4])
@@ -656,7 +809,7 @@ test "a plan runs only when its shape is right" {
   good: Plan = {goal: "Find the tip", steps: [{tool: "calc", what: "work out 15% of 80", done_when: "a number is given"}]}
   expect plan_ok(good, 3) == ""
   bad_tool: Plan = {goal: "Find the tip", steps: [{tool: "search", what: "look it up online", done_when: "found"}]}
-  expect plan_ok(bad_tool, 3).contains("calc, code or think")
+  expect plan_ok(bad_tool, 3).contains("calc, code, look, draw or think")
   long: Plan = {goal: "Find the tip", steps: [good.steps[0], good.steps[0], good.steps[0]]}
   expect plan_ok(long, 2) == "give at most 2 steps"
   expect plan_ok({goal: "", steps: []}, 3) == "give the goal in a sentence"
@@ -836,4 +989,57 @@ test "a step that fails is planned again another way" {
   expect r.steps.length() == 2
   expect r.steps[1].tool == "calc"
   expect r.steps[1].ok
+}
+
+// ---------------------------------------------------------------- more tools: look and draw (2026-11-18)
+
+test "a fact read on the web stands only on passages found on the page" {
+  answers planner: [{goal: "Say what causes tides", steps: [{tool: "look", what: "read the Wikipedia page on tides and say what causes them", done_when: "the cause is named"}]}]
+  answers finder: [{text: "Tide"}]
+  answers web_page: [{url: "https://en.wikipedia.org/wiki/Tide", title: "Tide", text: "Tides are the rise and fall of sea levels caused by the combined effects of the gravitational forces exerted by the Moon and the Sun, and the rotation of the Earth."}]
+  answers reader: [{answer: "The Moon's pull causes tides.", quotes: ["the Moon is the main cause of tides"]},
+                   {answer: "Tides are caused by the gravity of the Moon and the Sun, and Earth's rotation.", quotes: ["caused by the combined effects of the gravitational  forces exerted by the Moon and the Sun"]}]
+  answers writer: [{text: "Tides come from the gravity of the Moon and the Sun."}]
+  r = main({text: "What causes tides?", most: 2})
+  expect r.steps[0].tool == "look"
+  expect r.steps[0].ok
+  expect r.steps[0].answer.contains("Source: Tide")
+  expect r.steps[0].check.contains("word for word")
+}
+
+test "with no page to read, a look step says so and is not checked" {
+  answers planner: [{goal: "Say what causes tides", steps: [{tool: "look", what: "read the Wikipedia page on tides and say what causes them", done_when: "the cause is named"}]}]
+  answers finder: [{text: "Tide"}]
+  answers web_page: [{url: "", title: "", text: ""}]
+  answers replanner: [{tool: "", what: "", done_when: ""}]
+  answers writer: [{text: "Kosika could not read the page."}]
+  r = main({text: "What causes tides?", most: 2})
+  expect not r.steps[0].ok
+  expect r.steps[0].check.contains("allow en.wikipedia.org")
+}
+
+test "a quote is matched with case and spacing set aside" {
+  expect quotes_ok({answer: "The Moon and Sun.", quotes: ["THE MOON and\n the Sun"]}, "pulled by the Moon and the Sun, and") == ""
+  expect quotes_ok({answer: "The Moon.", quotes: ["the Moon alone does it"]}, "pulled by the Moon and the Sun").contains("not on the page")
+  expect quotes_ok({answer: "The Moon.", quotes: []}, "pulled by the Moon").contains("copy at least one")
+  expect search_words("Speed of light (physics)!") == "Speed+of+light+physics"
+}
+
+test "a drawing is made by Kosika Designs and kept in the report's pictures" {
+  answers planner: [{goal: "Draw the cubic", steps: [{tool: "draw", what: "plot y = x^3 - 3x", done_when: "the curve is drawn"}]}]
+  answers writer: [{text: "Here is the curve y = x^3 - 3x."}]
+  r = main({text: "Plot y = x^3 - 3x for me", most: 2})
+  expect r.kind == "drawing"
+  expect r.steps[0].ok
+  expect r.pictures.length() == 1
+  expect r.pictures[0].contains("<svg")
+}
+
+test "with no model's plan, a drawing ask is drawn by Kosika itself" {
+  answers planner: [{goal: "", steps: []}]
+  answers writer: [{text: "Here is the graph."}]
+  r = main({text: "Plot y = sin(x)/x", most: 2})
+  expect r.planned_by.starts_with("Kosika")
+  expect r.steps[0].tool == "draw"
+  expect r.steps[0].ok
 }
