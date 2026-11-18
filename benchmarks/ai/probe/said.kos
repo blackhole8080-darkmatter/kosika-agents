@@ -1,0 +1,30 @@
+// What each model of Kosika AI really sends back, with no check in the
+// way: one ask to the thinker, the coder and the tester, the raw text kept.
+//
+//   kosika-native run benchmarks/ai/probe/said.kos --input ask.json \
+//       --model kosika-virtual:soft --model-url http://127.0.0.1:8791/v1
+//   ask.json: {"a": {"text": "Why are there seasons on Earth?"}}
+
+record Job { text: Text }
+record Said { text: Text }
+record Code { text: Text }
+record Raw { thinker: Text coder: Text tester: Text }
+
+model thinker {
+  input: Job
+  output: Said as text
+  parameters: { max_output_tokens: 1500 }
+}
+
+model coder {
+  input: Job
+  output: Code as text
+  parameters: { max_output_tokens: 2000 }
+}
+
+workflow main(a: Job) -> Raw {
+  said = use_model thinker(a.text) otherwise {text: "(the thinker gave nothing the engine could read)"}
+  code = use_model coder("Write ONE small Kosika program: fn count_vowels(t: Text) -> Number, which counts a e i o u in t. End with a test block of three expect lines. Give only the program, in one ```kosika block.") otherwise {text: "(the coder gave nothing the engine could read)"}
+  tests = use_model coder("Write only a Kosika test block for fn count_vowels(t: Text) -> Number, with four expect lines, such as expect count_vowels(\"banana\") == 3. Give only the test block, in one ```kosika block.") otherwise {text: "(nothing)"}
+  out = {thinker: said.text, coder: code.text, tester: tests.text}
+}
