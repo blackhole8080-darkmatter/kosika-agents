@@ -381,35 +381,52 @@ workflow third_formula(w: Work) -> Sum {
 }
 
 fn calc_agreed(w: Work, a: Sum, b: Sum, c: Sum) -> Done {
-  let bad: Done = {n: w.n, tool: "calc", what: w.step.what, answer: "No formula Kosika could compute was given.", check: "not computed: " + formula_ok(a.expression), ok: false, ran: true}
-  if not computes(a.expression) and not computes(b.expression) and not computes(c.expression) { return bad }
+  // Each formula is read and computed once: reading one is many small steps.
+  let none = 0 - 0.0000001234
+  let va = value_of(a.expression)
+  let vb = value_of(b.expression)
+  let vc = value_of(c.expression)
+  let ka = va != none
+  let kb = vb != none
+  let kc = vc != none
+  if not ka and not kb and not kc {
+    return {n: w.n, tool: "calc", what: w.step.what, answer: "No formula Kosika could compute was given.", check: "not computed: " + formula_ok(a.expression), ok: false, ran: true}
+  }
   // Two formulas that agree decide the number.
   var pick = ""
   var meaning = ""
-  if agree(a, b) {
+  var value = 0
+  var how = "two of three formulas written apart"
+  if ka and kb and same_value(va, vb) {
     pick = a.expression
     meaning = a.meaning
-  } else if agree(a, c) {
+    value = va
+    how = "two formulas written apart"
+  } else if ka and kc and same_value(va, vc) {
     pick = a.expression
     meaning = a.meaning
-  } else if agree(b, c) {
+    value = va
+  } else if kb and kc and same_value(vb, vc) {
     pick = b.expression
     meaning = b.meaning
+    value = vb
   }
   if not pick.is_empty() {
-    let how = if agree(a, b) { "two formulas written apart" } else { "two of three formulas written apart" }
-    return {n: w.n, tool: "calc", what: w.step.what, answer: f"{meaning}: {pick} = {shown(value_of(pick))}",
+    return {n: w.n, tool: "calc", what: w.step.what, answer: f"{meaning}: {pick} = {shown(value)}",
             check: f"computed by Kosika; {how} gave the same number", ok: true, ran: true}
   }
-  // Only one formula could be computed: kept, but it stands alone.
-  let only = if computes(a.expression) { a } else { if computes(b.expression) { b } else { c } }
-  let others = (for e in [a.expression, b.expression, c.expression] where computes(e) { 1 }).length()
-  if others == 1 {
-    return {n: w.n, tool: "calc", what: w.step.what, answer: f"{only.meaning}: {only.expression} = {shown(value_of(only.expression))}",
+  let count = (for k in [ka, kb, kc] where k { 1 }).length()
+  if count == 1 {
+    let only = if ka { a } else { if kb { b } else { c } }
+    let v = if ka { va } else { if kb { vb } else { vc } }
+    return {n: w.n, tool: "calc", what: w.step.what, answer: f"{only.meaning}: {only.expression} = {shown(v)}",
             check: "computed by Kosika from one formula; no second formula could be had to compare", ok: true, ran: true}
   }
-  let seen = (for e in [a.expression, b.expression, c.expression] where computes(e) { e + " = " + shown(value_of(e)) }).join("; ")
-  return {n: w.n, tool: "calc", what: w.step.what, answer: "The formulas disagree: " + seen,
+  var seen: Text[] = []
+  if ka { seen = seen.append(a.expression + " = " + shown(va)) }
+  if kb { seen = seen.append(b.expression + " = " + shown(vb)) }
+  if kc { seen = seen.append(c.expression + " = " + shown(vc)) }
+  return {n: w.n, tool: "calc", what: w.step.what, answer: "The formulas disagree: " + seen.join("; "),
           check: "not trusted: the formulas written apart give different numbers", ok: false, ran: true}
 }
 
@@ -614,7 +631,7 @@ workflow do_look(w: Work) -> Done {
 
 // The text to draw: the step's own words when Designs can read them, else the ask's.
 fn drawn_text(w: Work) -> Text {
-  if pl_wants(w.step.what) and pl_for(w.step.what).problems.is_empty() { return w.step.what }
+  if pl_wants(w.step.what) { return w.step.what }
   return w.ask
 }
 
