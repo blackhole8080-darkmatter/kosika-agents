@@ -98,6 +98,14 @@ def load(path: Path) -> dict:
 AGAIN_IN = re.compile(r"try again in (?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)s)?", re.IGNORECASE)
 
 
+def asks_plain_text(body: dict) -> bool:
+    """Whether the request asks for plain text, as Kosika does for a model `as text`."""
+    for message in body.get("messages") or []:
+        if message.get("role") == "system" and str(message.get("content") or "").startswith("Answer with only the text asked for, in plain text"):
+            return True
+    return False
+
+
 def hollow(text: str) -> bool:
     """Whether a reply is JSON with nothing in it: {}, [], or only blank fields."""
     try:
@@ -188,7 +196,7 @@ class Router:
                 json.loads(call["function"].get("arguments") or "{}")
             except (ValueError, TypeError):
                 return f"tool {name} got arguments that are not JSON"
-        if (body.get("response_format") or {}).get("type") in ("json_object", "json_schema") and not calls:
+        if (body.get("response_format") or {}).get("type") in ("json_object", "json_schema") and not calls and not asks_plain_text(body):
             try:
                 json.loads(text[text.index("{"): text.rindex("}") + 1] if "{" in text else text)
             except ValueError:
@@ -204,6 +212,10 @@ class Router:
         # Settings a model needs from this router, such as a lower reasoning
         # effort, as the config gives them for that model.
         sent.update(model.get("extra", {}))
+        if "response_format" in sent and asks_plain_text(sent):
+            # Older Kosika engines put a model `as text` in JSON mode too;
+            # a server then wraps the text in an object of its own.
+            del sent["response_format"]
         request = urllib.request.Request(
             model["url"], data=json.dumps(sent).encode(), method="POST",
             headers={**({"Authorization": "Bearer " + os.environ[model["key"]]} if model.get("key") else {}),
