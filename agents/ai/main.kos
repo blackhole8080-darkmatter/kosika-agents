@@ -36,11 +36,21 @@
 // carry every number Kosika computed exactly as computed. The report says
 // what was checked and how, step by step, and what was not. No model's own
 // confidence decides anything here.
+//
+// Kosika AI thinks through Kosika's Brain (std/brain_core.kos): before
+// planning it asks the Brain what it recalls (the talk so far and the
+// nearest past episodes of any Kosika part), and the planner reads that
+// first; when the run is done it tells the Brain what was done and how it
+// went: "passed" only when every step that ran passed a check made by
+// code (maths computed by std/math, tests run by the engine, quotes found
+// word for word, points computed by Kosika Designs), "failed" when a
+// check failed, and "unchecked" otherwise.
 
 import "std/math.kos"
 import "std/designs_plot.kos"
+import "std/brain_core.kos"
 
-export [Ask, Step, Plan, Done, Report, kind_of, plan_ok, fallback_plan, formula_ok, code_shape, reply_ok, main]
+export [Ask, Step, Plan, Done, Report, kind_of, plan_ok, fallback_plan, formula_ok, code_shape, reply_ok, brain_thought, plan_before, step_verdict, brain_outcome, brain_checked_by, brain_done, main]
 
 record Ask { text: Text most: Number }
 record Step { tool: Text what: Text done_when: Text }
@@ -830,15 +840,76 @@ fn report_of(ask: Ask, kind: Text, plan: Plan, done: Done[], answer: Text) -> Re
   return {ask: ask.text, kind: kind, goal: plan.goal, planned_by: by, steps: steps, answer: answer, passed: passed, failed: failed, note: note, pictures: pictures}
 }
 
+// ---------------------------------------------------------------- thinking through Kosika's Brain
+
+// The Brain's view of this ask. An ask carries no talk or time, so Kosika
+// AI speaks in the Brain's default talk, and the host gives no clock.
+fn brain_thought(ask: Ask) -> BrainThought { return {ask: ask.text, part: "ai", session: "", at: ""} }
+
+// What the planner reads first: what the Brain recalled, then the checked
+// plan of a near ask. Either may be "".
+fn plan_before(brain: Text, hint: Text) -> Text {
+  if brain.trim().is_empty() { return hint }
+  if hint.is_empty() { return brain }
+  return brain + "\n\n" + hint
+}
+
+// What checked a step, by its tool.
+fn check_name(tool: Text) -> Text {
+  if tool == "calc" { return "maths" }
+  if tool == "code" { return "tests" }
+  if tool == "think" or tool == "look" { return "quotes" }
+  if tool == "draw" { return "plot" }
+  return ""
+}
+
+// How one step went: passed or failed its check, or "unchecked" when no
+// check could be made (no page, the engine out of reach, formulas that
+// disagree); "" for a step that did not run.
+fn step_verdict(d: Done) -> Text {
+  if not d.ran { return "" }
+  if d.ok { return "passed" }
+  if d.check.starts_with("not checked") or d.check.starts_with("not trusted") { return "unchecked" }
+  return "failed"
+}
+
+// How the run went, for the Brain: failed when any check failed, passed
+// only when every step that ran passed its check.
+fn brain_outcome(done: Done[]) -> Text {
+  let verdicts = for d in done where d.ran { step_verdict(d) }
+  if verdicts.contains("failed") { return "failed" }
+  if verdicts.is_empty() or verdicts.contains("unchecked") { return "unchecked" }
+  return "passed"
+}
+
+// The checks that ran (passed or failed), each named once: "maths+quotes".
+fn brain_checked_by(done: Done[]) -> Text {
+  var names: Text[] = []
+  for d in done {
+    let v = step_verdict(d)
+    let name = check_name(d.tool)
+    if (v == "passed" or v == "failed") and not name.is_empty() and not names.contains(name) { names = names.append(name) }
+  }
+  return names.join("+")
+}
+
+fn brain_done(ask: Ask, r: Report) -> BrainDone {
+  let tools = for d in r.steps { d.tool }
+  let ran = if tools.is_empty() { "ran no step" } else { "ran " + tools.join(", ") }
+  return {part: "ai", session: "", at: "", ask: ask.text, did: ran + " and replied: " + clip(r.answer.trim(), 240),
+          outcome: brain_outcome(r.steps), checked_by: brain_checked_by(r.steps)}
+}
+
 // ---------------------------------------------------------------- the loop
 
 workflow main(ask: Ask) -> Report {
   budget 60 model calls, 1500 seconds
+  brain = call brain_sense(brain_thought(ask))
   kind  = kind_of(ask.text)
   most  = steps_most(ask.most)
   past  = recall lessons like ask.text
   hint  = lesson_hint(past, ask.text)
-  plan  = use_model planner(job({task: plan_task(kind, most), ask: ask.text, step: "", before: hint})) verify plan_ok(plan, most) retry 2 otherwise fallback_plan(ask.text, kind)
+  plan  = use_model planner(job({task: plan_task(kind, most), ask: ask.text, step: "", before: plan_before(brain.prompt, hint)})) verify plan_ok(plan, most) retry 2 otherwise fallback_plan(ask.text, kind)
   w1    = work_at(ask.text, plan, 0, [])
   d1    = match tool_at(plan, 0) {
     case "calc" { call do_calc(w1) }
@@ -884,6 +955,7 @@ workflow main(ask: Ask) -> Report {
   reply = use_model writer(job(reply_brief(ask.text, plan, done))) verify reply_ok(reply, done) retry 1 otherwise {text: plain_reply(done)}
   made  = report_of(ask, kind, plan, done, reply.text)
   kept  = remember lesson_of(made, plan) in lessons under lesson_key(ask.text)
+  noted = call brain_record(brain_done(ask, made))
   report = {..made, note: made.note + learned_note(hint)}
 }
 
@@ -1163,4 +1235,53 @@ test "only a plan that passed, and was not dropped, is shown again" {
 test "a program written with web escapes is read as it was meant" {
   expect with_tests("fn f(n: Number) -&gt; Number { return n }", "") == "fn f(n: Number) -> Number { return n }"
   expect with_tests("fn f(n: Number) -&gt; Number { return n }", "test \"t\" {\n  expect f(1) &lt; 2\n}").contains("expect f(1) < 2")
+}
+
+// ---------------------------------------------------------------- Kosika's Brain (2026-11-18)
+
+fn bt_step(tool: Text, check: Text, ok: Bool) -> Done { return {n: 1, tool: tool, what: "w", answer: "a", check: check, ok: ok, ran: true} }
+
+test "the planner reads what the Brain recalled first, then the checked plan" {
+  expect plan_before("", "") == ""
+  expect plan_before("  ", "a checked plan") == "a checked plan"
+  expect plan_before("Earlier in this talk:\n- x", "") == "Earlier in this talk:\n- x"
+  expect plan_before("Earlier in this talk:\n- x", "a checked plan") == "Earlier in this talk:\n- x\n\na checked plan"
+  t = brain_thought({text: "What is 18% of 2450?", most: 2})
+  expect t.part == "ai" and t.ask == "What is 18% of 2450?" and t.session == ""
+}
+
+test "a run is passed for the Brain only when code checked every step" {
+  maths = bt_step("calc", "computed by Kosika from the formula", true)
+  quoted = bt_step("think", "a second model read it and quoted", true)
+  wrong = bt_step("code", "still failing: test d failed", false)
+  nopage = bt_step("look", "not checked: no page could be read", false)
+  skipped: Done = {n: 3, tool: "", what: "", answer: "", check: "", ok: false, ran: false}
+  expect brain_outcome([maths, quoted, skipped]) == "passed"
+  expect brain_checked_by([maths, quoted, skipped]) == "maths+quotes"
+  expect brain_outcome([maths, wrong]) == "failed"
+  expect brain_checked_by([maths, wrong]) == "maths+tests"
+  expect brain_outcome([maths, nopage]) == "unchecked"
+  expect brain_outcome([bt_step("calc", "not trusted: the formulas disagree", false)]) == "unchecked"
+  expect brain_outcome([skipped]) == "unchecked"
+  expect brain_checked_by([nopage]) == ""
+  expect step_verdict(skipped) == ""
+}
+
+test "each run is told to the Brain, and the next ask is planned with it in view" {
+  answers planner: [{goal: "18% of 2450", steps: [{tool: "calc", what: "work out 18% of 2450", done_when: "the number is known"}]},
+                    {goal: "Explain tides", steps: [{tool: "think", what: "explain what causes tides", done_when: "the moon is named"}]}]
+  answers counter: [{expression: "0.18*2450", meaning: "18% of 2450"}, {expression: "0.18*2450", meaning: "18% of 2450"}]
+  answers thinker: [{text: "Tides come mostly from the moon's pull on the sea."}]
+  answers reviewer: [{answer: true, confidence: 0.9, reason: "names the moon", evidence: ["the moon's pull on the sea"]}]
+  answers writer: [{text: "It is 441."}, {text: "Tides come mostly from the moon's pull."}]
+  first = main({text: "What is 18% of 2450?", most: 2})
+  d = brain_done({text: "What is 18% of 2450?", most: 2}, first)
+  expect d.outcome == "passed" and d.checked_by == "maths"
+  expect d.did == "ran calc and replied: It is 441."
+  ctx = brain_sense(brain_thought({text: "Why are there tides?", most: 2}))
+  expect ctx.prompt.contains("ai: 'What is 18% of 2450?' → ran calc and replied: It is 441. (passed)")
+  second = main({text: "Why are there tides?", most: 2})
+  expect second.passed == 1
+  after = brain_sense(brain_thought({text: "and again?", most: 2}))
+  expect after.working.length() == 2
 }
