@@ -35,7 +35,8 @@ ROOT = HERE.parents[1]
 
 def report_of(stdout: str) -> dict | None:
     """The report the engine printed: JSON, or the Python-shaped text it prints."""
-    text = stdout.strip()
+    # The engine names its trace file on a line of its own after the report.
+    text = "\n".join(line for line in stdout.splitlines() if not line.startswith("Trace: ")).strip()
     if not text:
         return None
     for read in (json.loads, ast.literal_eval):
