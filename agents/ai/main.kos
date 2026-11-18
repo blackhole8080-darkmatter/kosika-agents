@@ -808,7 +808,7 @@ fn report_of(ask: Ask, kind: Text, plan: Plan, done: Done[], answer: Text) -> Re
   let passed = (for d in steps where d.ok { 1 }).length()
   let failed = steps.length() - passed
   let by = if plan == fallback_plan(ask.text, kind) { "Kosika (no model's plan passed its check)" } else { "a model, checked by Kosika" }
-  let note = if failed == 0 { f"All {passed} steps passed their checks." } else { f"{passed} of {steps.length()} steps passed their checks; the rest are marked unchecked, and the reply says so." }
+  let note = if failed == 0 and passed == 1 { "The one step passed its check." } else if failed == 0 { f"All {passed} steps passed their checks." } else { f"{passed} of {steps.length()} steps passed their checks; the rest are marked unchecked, and the reply says so." }
   let pictures = for d in steps where d.ok and d.tool == "draw" { pl_for(d.what).svg }
   return {ask: ask.text, kind: kind, goal: plan.goal, planned_by: by, steps: steps, answer: answer, passed: passed, failed: failed, note: note, pictures: pictures}
 }
