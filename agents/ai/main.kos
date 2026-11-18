@@ -426,7 +426,7 @@ workflow do_calc(w: Work) -> Done {
 // ---------------------------------------------------------------- code: written by the model, checked by the engine
 
 fn code_task() -> Text {
-  return "Write ONE small, complete Kosika program that does what the step asks. Kosika is its own language, not Python: functions are written fn name(a: Number, b: Text) -> Text { return ... }, types are Text, Number, Bool, Text[] and Number[], lists have .length() and .append(x), loops are for x in list { ... } and while cond { ... }, a changing name is declared var, a fixed one let. End the program with a test block of at least three checks, like:\ntest \"it works\" {\n  expect double(2) == 4\n}\nGive only the program, in one ```kosika block."
+  return "Write ONE small, complete Kosika program that does what the step asks. Kosika is its own language, not Python: functions are written fn name(a: Number, b: Text) -> Text { return ... }, types are Text, Number, Bool, Text[] and Number[], lists have .length() and .append(x), loops are for x in list { ... } and while cond { ... }, a changing name is declared var, a fixed one let. It is not Rust or Python: no let mut, no 'single quotes' (text is always in double quotes), write and / or / not instead of && / || / !, and list.contains(x) instead of x in list. End the program with a test block of at least three checks, like:\ntest \"it works\" {\n  expect double(2) == 4\n}\nEvery test block has a name in double quotes. Give only the program, in one ```kosika block."
 }
 
 fn test_task() -> Text {
@@ -447,15 +447,20 @@ fn tests_shape(text: Text) -> Text {
 
 fn code_brief(w: Work, tests: Text) -> Brief {
   if tests.is_empty() { return {task: code_task(), ask: w.ask, step: w.step.what, before: w.before} }
-  return {task: "Write ONE small Kosika program that passes these tests, which will be run against it unchanged:\n" + tests + "\n\nUse exactly the function names and types the tests use, and write only the functions, no test block. Kosika is its own language, not Python: fn name(a: Number, b: Text) -> Text { return ... }, lists have .length() and .append(x), text has .lower(), .chars(), .split(\" \") and .contains(x), loops are for x in list { ... } and while cond { ... }, a changing name is declared var, a fixed one let. Give only the program, in one ```kosika block.",
+  return {task: "Write ONE small Kosika program that passes these tests, which will be run against it unchanged:\n" + tests + "\n\nUse exactly the function names and types the tests use, and write only the functions, no test block. Kosika is its own language, not Python: fn name(a: Number, b: Text) -> Text { return ... }, lists have .length() and .append(x), text has .lower(), .chars(), .split(\" \") and .contains(x), loops are for x in list { ... } and while cond { ... }, a changing name is declared var, a fixed one let. It is not Rust or Python: no let mut, no 'single quotes' (text is always in double quotes), write and / or / not instead of && / || / !, and list.contains(x) instead of x in list. Give only the program, in one ```kosika block.",
           ask: w.ask, step: w.step.what, before: w.before}
 }
 
 // The program the engine checks: the model's functions and the tests
 // written before them, which the model may not change.
 fn with_tests(code: Text, tests: Text) -> Text {
-  if tests.is_empty() { return code }
-  return code.trim() + "\n\n" + tests.trim() + "\n"
+  if tests.is_empty() { return unescaped(code) }
+  return unescaped(code).trim() + "\n\n" + unescaped(tests).trim() + "\n"
+}
+
+// Some models write a program as if for a web page, -> as -&gt;; it is put back.
+fn unescaped(t: Text) -> Text {
+  return t.replace("&gt;", ">").replace("&lt;", "<").replace("&quot;", "\"").replace("&#39;", "'").replace("&amp;", "&")
 }
 
 fn fix_brief(f: Fix) -> Brief {
@@ -1136,4 +1141,9 @@ test "only a plan that passed, and was not dropped, is shown again" {
   expect learned_note("") == ""
   expect alike("What is 18% of 2450?", "what is 18% of 2600") == 0.8
   expect alike("Why is the sky blue?", "What is 18% of 2450?") < 0.7
+}
+
+test "a program written with web escapes is read as it was meant" {
+  expect with_tests("fn f(n: Number) -&gt; Number { return n }", "") == "fn f(n: Number) -> Number { return n }"
+  expect with_tests("fn f(n: Number) -&gt; Number { return n }", "test \"t\" {\n  expect f(1) &lt; 2\n}").contains("expect f(1) < 2")
 }
