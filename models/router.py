@@ -43,6 +43,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 AGENT = "Kosika/0.1 (virtual model)"
 NAME = "kosika-virtual"
+#: What each free cloud model has used of its day, kept between restarts.
+ALLOWANCE = Path.home() / ".kosika" / "router-allowance.json"
 
 
 def json_in(text: str) -> str | None:
@@ -142,12 +144,92 @@ def used_up_for(error: urllib.error.HTTPError) -> float:
     return hours * 3600 + minutes * 60 + seconds
 
 
+def tokens_of(body: dict, reply: dict) -> int:
+    """Tokens a call spent: the service's own count, or about four characters
+    a token when it gives none."""
+    usage = reply.get("usage") or {}
+    told = usage.get("total_tokens") or (usage.get("prompt_tokens") or 0) + (usage.get("completion_tokens") or 0)
+    if told:
+        return int(told)
+    asked = sum(len(str(m.get("content") or "")) for m in body.get("messages") or [])
+    try:
+        said = len(reply["choices"][0]["message"].get("content") or "")
+    except (KeyError, IndexError, TypeError):
+        said = 0
+    return (asked + said) // 4 + 1
+
+
+class Allowance:
+    """Each free cloud model's daily allowance, and how much of it is used
+    today (UTC, as the services count). router.json gives a model its
+    `per_day_tokens`; one without it is not counted. Kept on disk, so a
+    restarted router still knows what the day has used."""
+
+    def __init__(self, config: dict, path: Path | None = None, today=None) -> None:
+        self.limits = {name: int(m["per_day_tokens"]) for name, m in config["models"].items() if m.get("per_day_tokens")}
+        self.path = path
+        self.today = today or (lambda: time.strftime("%Y-%m-%d", time.gmtime()))
+        self.lock = threading.Lock()
+        self.day, self.used = self.today(), {}
+        if path is not None:
+            try:
+                kept = json.loads(path.read_text(encoding="utf-8"))
+                if kept.get("day") == self.day:
+                    self.used = {k: int(v) for k, v in kept.get("used", {}).items()}
+            except (OSError, ValueError, AttributeError):
+                pass
+
+    def _fresh(self) -> None:
+        if self.today() != self.day:
+            self.day, self.used = self.today(), {}
+
+    def _save(self) -> None:
+        if self.path is None:
+            return
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(json.dumps({"day": self.day, "used": self.used}, indent=1), encoding="utf-8")
+        except OSError:
+            pass
+
+    def spend(self, name: str, tokens: int) -> None:
+        if name not in self.limits:
+            return
+        with self.lock:
+            self._fresh()
+            self.used[name] = self.used.get(name, 0) + max(0, int(tokens))
+            self._save()
+
+    def used_up(self, name: str) -> None:
+        """The service said the day's allowance is gone: count it all used."""
+        if name not in self.limits:
+            return
+        with self.lock:
+            self._fresh()
+            self.used[name] = max(self.used.get(name, 0), self.limits[name])
+            self._save()
+
+    def left(self, name: str) -> float:
+        """The share of today's allowance left, 1.0 for a model not counted."""
+        if name not in self.limits:
+            return 1.0
+        with self.lock:
+            self._fresh()
+            return max(0.0, 1.0 - self.used.get(name, 0) / self.limits[name])
+
+    def report(self) -> dict:
+        with self.lock:
+            self._fresh()
+            return {name: {"used": self.used.get(name, 0), "per_day": limit} for name, limit in self.limits.items()}
+
+
 class Router:
-    def __init__(self, config: dict, log: Path) -> None:
+    def __init__(self, config: dict, log: Path, allowance: Allowance | None = None) -> None:
         self.config = config
         self.log = log
         self.cool: dict[str, float] = {}
         self.lock = threading.Lock()
+        self.allowance = allowance or Allowance(config)
 
     # ------------------------------------------------------------ deciding
 
@@ -164,10 +246,29 @@ class Router:
             return "strong", "an earlier step failed: " + ", ".join(signs[:3])
         if size > rule["max_chars"]:
             return "strong", f"{size} characters"
+        easy = self.config.get("easy_when")
+        wants = body.get("max_tokens") or body.get("max_completion_tokens") or 0
+        if easy and "easy" in self.config["routes"] and size <= easy["max_chars"] and 0 < wants <= easy["max_tokens"]:
+            return "easy", f"{size} characters, {wants} tokens wanted, no tools"
         return "quick", f"{size} characters, no tools"
 
     def route(self, start: str) -> list[str]:
-        return self.config["routes"][start]
+        return self.plan(start, self.config["routes"][start])
+
+    def plan(self, start: str, route: list[str]) -> list[str]:
+        """The route with the day's allowances in mind. An easy step goes to
+        the models on this computer first, which cost no allowance. On easy
+        and quick routes, a cloud model with less of its day left than
+        `reserve` (router.json) moves to the back, so what it has left goes
+        to the strong steps: planning, review, long or failed work."""
+        if start == "easy":
+            local = [m for m in route if not self.config["models"][m].get("key")]
+            route = local + [m for m in route if m not in local]
+        if start in ("easy", "quick"):
+            reserve = float(self.config.get("reserve", 0))
+            low = [m for m in route if self.allowance.left(m) < reserve]
+            route = [m for m in route if m not in low] + low
+        return route
 
     # ------------------------------------------------------------ checking
 
@@ -298,6 +399,8 @@ class Router:
                     daily = used_up_for(error)
                     with self.lock:
                         self.cool[name] = time.time() + (daily if daily else min(wait, 120))
+                    if daily:
+                        self.allowance.used_up(name)
                 step = {"model": name, "status": error.code, "ms": int((time.time() - t0) * 1000)}
                 if error.code == 429 and daily:
                     step["why"] = f"daily allowance used up; resting {daily / 60:.0f} min"
@@ -312,6 +415,7 @@ class Router:
                     with self.lock:
                         self.cool[name] = time.time() + 60
                 continue
+            self.allowance.spend(name, tokens_of(body, reply))
             wrong = self.problem(body, reply)
             tried.append({"model": name, "status": 200, "ms": int((time.time() - t0) * 1000), "problem": wrong})
             if wrong is None:
@@ -342,6 +446,8 @@ def handler(router: Router):
         def do_GET(self):
             if self.path.rstrip("/").endswith("/models"):
                 return self.send(200, {"object": "list", "data": [{"id": NAME, "object": "model"}]})
+            if self.path.rstrip("/").endswith("/kosika/allowance"):
+                return self.send(200, router.allowance.report())
             self.send(404, {"error": {"message": "not found"}})
 
         def do_POST(self):
@@ -379,10 +485,12 @@ def main() -> None:
     parser.add_argument("--config", default=str(HERE / "router.json"))
     parser.add_argument("--port", type=int, default=8791)
     parser.add_argument("--log", default=str(Path.home() / ".kosika" / "virtual-router.jsonl"))
+    parser.add_argument("--allowance", default=str(ALLOWANCE))
     args = parser.parse_args()
     log = Path(args.log)
     log.parent.mkdir(parents=True, exist_ok=True)
-    router = Router(load(Path(args.config)), log)
+    config = load(Path(args.config))
+    router = Router(config, log, Allowance(config, Path(args.allowance)))
     server = ThreadingHTTPServer(("127.0.0.1", args.port), handler(router))
     print(f"{NAME} on http://127.0.0.1:{args.port}/v1, log {log}", flush=True)
     server.serve_forever()

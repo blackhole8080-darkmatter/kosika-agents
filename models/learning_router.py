@@ -157,8 +157,8 @@ def kosika_order(body: dict, route: list[str], ledger: Ledger) -> tuple[str, lis
 
 
 class LearningRouter(base.Router):
-    def __init__(self, config: dict, log: Path, ledger: Ledger) -> None:
-        super().__init__(config, log)
+    def __init__(self, config: dict, log: Path, ledger: Ledger, allowance: base.Allowance | None = None) -> None:
+        super().__init__(config, log, allowance)
         self.ledger = ledger
         self.local = threading.local()
         self.kept = smarter.Kept()
@@ -180,8 +180,13 @@ class LearningRouter(base.Router):
         decided = kosika_order(getattr(self.local, "body", {}), written, self.ledger)
         if decided is not None and sorted(decided[1]) == sorted(written):
             self.local.kind = decided[0]
-            return decided[1]
-        return self.ledger.order(getattr(self.local, "kind", "plain"), written)
+            ordered = decided[1]
+        else:
+            ordered = self.ledger.order(getattr(self.local, "kind", "plain"), written)
+        # The fastest model is not always the one to ask: the day's
+        # allowances come after speed, so an easy step stays on this
+        # computer and a model running low is kept for the strong steps.
+        return self.plan(start, ordered)
 
     def fitting(self, route: list[str]) -> list[str]:
         """The route without models the request is too long for. A model on
@@ -252,6 +257,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8791)
     parser.add_argument("--log", default=str(Path.home() / ".kosika" / "virtual-router.jsonl"))
     parser.add_argument("--ledger", default=str(Path.home() / ".kosika" / "router-ledger.json"))
+    parser.add_argument("--allowance", default=str(base.ALLOWANCE))
     parser.add_argument("--show", action="store_true")
     args = parser.parse_args()
     ledger = Ledger(Path(args.ledger))
@@ -260,7 +266,8 @@ def main() -> None:
         return
     log = Path(args.log)
     log.parent.mkdir(parents=True, exist_ok=True)
-    router = LearningRouter(with_keys(Path(args.config)), log, ledger)
+    config = with_keys(Path(args.config))
+    router = LearningRouter(config, log, ledger, base.Allowance(config, Path(args.allowance)))
     plain = base.handler(router)
 
     class Handler(plain):

@@ -4,6 +4,7 @@
       "id": "openai/gpt-oss-20b",
       "url": "https://api.groq.com/openai/v1/chat/completions",
       "key": "GROQ_API_KEY",
+      "per_day_tokens": 200000,
       "extra": {
         "reasoning_effort": "low"
       }
@@ -12,6 +13,7 @@
       "id": "openai/gpt-oss-120b",
       "url": "https://api.groq.com/openai/v1/chat/completions",
       "key": "GROQ_API_KEY",
+      "per_day_tokens": 200000,
       "extra": {
         "reasoning_effort": "low"
       }
@@ -62,6 +64,16 @@
     }
   },
   "routes": {
+    "easy": [
+      "local",
+      "coder",
+      "quick",
+      "other",
+      "strong",
+      "spare",
+      "spare2",
+      "small"
+    ],
     "quick": [
       "quick",
       "strong",
@@ -85,6 +97,11 @@
   "quick_when": {
     "max_chars": 2500
   },
+  "easy_when": {
+    "max_chars": 1500,
+    "max_tokens": 400
+  },
+  "reserve": 0.25,
   "failure_words": [
     "Traceback",
     "FAILED",
