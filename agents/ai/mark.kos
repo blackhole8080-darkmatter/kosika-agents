@@ -1,0 +1,78 @@
+// Keep or Drop one run of Kosika AI, as Aryan decides on it. A kept run's
+// plan is shown to the planner for near asks and goes into the training
+// data (agents/ai/lessons.py); a dropped one is never shown again.
+//
+//   kosika-native run agents/ai/mark.kos --memory FOLDER --input mark.json
+//   mark.json: {"m": {"ask": "What is 18% of 2450?", "verdict": "keep"}}
+
+record Lesson { ask: Text kind: Text plan: Text answer: Text verdict: Text }
+memory lessons of Lesson
+
+record Mark { ask: Text verdict: Text }
+record Marked { ok: Bool said: Text }
+
+fn clip(t: Text, n: Number) -> Text {
+  if t.length() <= n { return t }
+  return t.slice(0, n)
+}
+
+// The same key Kosika AI keeps a run under.
+fn lesson_key(text: Text) -> Text {
+  return clip(text.lower().replace("\n", " ").replace("\t", " ").words().join(" "), 200)
+}
+
+fn mark_ok(m: Mark) -> Text {
+  if m.verdict != "keep" and m.verdict != "drop" { return "the verdict must be keep or drop" }
+  return ""
+}
+
+fn marked(m: Mark, found: Bool) -> Marked {
+  if not mark_ok(m).is_empty() { return {ok: false, said: mark_ok(m)} }
+  if not found { return {ok: false, said: "Kosika AI has no run of that ask to mark."} }
+  let how = if m.verdict == "keep" { "Kept" } else { "Dropped" }
+  return {ok: true, said: how + ": " + clip(m.ask, 120)}
+}
+
+fn with_verdict(r: LessonsRecalled, m: Mark) -> Lesson {
+  let l = r.value.or({ask: m.ask, kind: "", plan: "", answer: "", verdict: ""})
+  if not mark_ok(m).is_empty() { return l }
+  return {..l, verdict: m.verdict}
+}
+
+workflow main(m: Mark) -> Marked {
+  known = recall lessons under lesson_key(m.ask)
+  saved = match known.found {
+    case true { call keep_it({r: known, m: m}) }
+    case _ { {key: "", entries: 0} }
+  }
+  out = marked(m, known.found)
+}
+
+record Both { r: LessonsRecalled m: Mark }
+
+workflow keep_it(b: Both) -> MemorySaved {
+  saved = remember with_verdict(b.r, b.m) in lessons under lesson_key(b.m.ask)
+}
+
+// What a test puts in the memory first, as Kosika AI would after a run.
+workflow seed(l: Lesson) -> MemorySaved {
+  saved = remember l in lessons under lesson_key(l.ask)
+}
+
+workflow verdict_now(m: Mark) -> Lesson {
+  known = recall lessons under lesson_key(m.ask)
+  out = with_verdict(known, {ask: m.ask, verdict: "as it is"})
+}
+
+test "a run is kept or dropped only when Kosika AI has it" {
+  saved = seed({ask: "What is 18% of 2450?", kind: "maths", plan: "goal: x", answer: "441", verdict: "checked"})
+  kept = main({ask: "What is 18%  of 2450?", verdict: "keep"})
+  expect kept.ok
+  expect kept.said.starts_with("Kept")
+  now = verdict_now({ask: "What is 18% of 2450?", verdict: ""})
+  expect now.verdict == "keep"
+  missing = main({ask: "Why is the sky blue?", verdict: "drop"})
+  expect not missing.ok
+  wrong = main({ask: "What is 18% of 2450?", verdict: "maybe"})
+  expect not wrong.ok
+}

@@ -83,12 +83,15 @@ def main() -> None:
     parser.add_argument("--url", default="http://127.0.0.1:8791/v1")
     parser.add_argument("--only", default="")
     parser.add_argument("--cap", type=float, default=600, help="seconds one ask may take")
+    parser.add_argument("--memory", default="", help="Kosika AI's lessons folder; a fresh one for each run when not given")
     args = parser.parse_args()
     asks = json.loads((HERE / "asks.json").read_text(encoding="utf-8"))["asks"]
     if args.only:
         wanted = set(args.only.split(","))
         asks = [a for a in asks if a["id"] in wanted]
     rows = []
+    lessons = tempfile.TemporaryDirectory()
+    memory = args.memory or lessons.name
     for ask in asks:
         with tempfile.TemporaryDirectory() as folder:
             given = Path(folder) / "ask.json"
@@ -97,7 +100,7 @@ def main() -> None:
             try:
                 ran = subprocess.run([args.engine, "run", str(ROOT / "agents" / "ai" / "main.kos"), "--input", str(given),
                                       "--model", args.model, "--model-url", args.url, "--model-timeout", "120",
-                                      "--max-output-tokens", "2000", "--allow-site", "en.wikipedia.org"],
+                                      "--max-output-tokens", "2000", "--allow-site", "en.wikipedia.org", "--memory", memory],
                                      capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=args.cap, cwd=ROOT)
                 report, stderr, code = report_of(ran.stdout), ran.stderr.strip(), ran.returncode
             except subprocess.TimeoutExpired:

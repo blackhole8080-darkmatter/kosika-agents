@@ -1,7 +1,8 @@
 // Kosika AI: one ask in; a plan, the work, a check of every step, and an
 // honest report back.
 //
-//   kosika-native run agents/ai/main.kos --input ask.json \
+//   kosika-native run agents/ai/main.kos --input ask.json --memory FOLDER \
+//       --allow-site en.wikipedia.org \
 //       --model kosika-virtual --model-url http://127.0.0.1:8791/v1
 //   ask.json: {"ask": {"text": "What is 18% of 2450, and is it more than 400?", "most": 3}}
 //
@@ -24,6 +25,12 @@
 //          page, and every quote is found on the page word for word
 //   draw   Kosika Designs draws a graph, surface, curve or shape from the
 //          formula (std/designs_plot); every point is computed, no model
+//
+// Kosika AI learns from its own checked work: each run is kept in the
+// memory "lessons" (run with --memory FOLDER), and the plan of a near ask
+// whose every step passed, and that Aryan did not Drop, is shown to the
+// planner as an example. agents/ai/mark.kos keeps or drops a lesson, and
+// agents/ai/lessons.py turns the kept ones into training data.
 //
 // The reply is written last, from the checked results only, and must
 // carry every number Kosika computed exactly as computed. The report says
@@ -58,6 +65,11 @@ record PageAsk { url: Text }
 record Page { url: Text title: Text text: Text }
 record Quoted { answer: Text quotes: Text[] }
 record Looked { w: Work page: Page }
+
+// One run, kept: the plan as the planner wrote it, and how it went.
+// verdict: "checked" (every step passed), "unchecked", or Aryan's "keep" or "drop".
+record Lesson { ask: Text kind: Text plan: Text answer: Text verdict: Text }
+memory lessons of Lesson
 
 // What the engine finds wrong with a program before it is kept.
 record KFile { path: Text text: Text before: Text exists: Bool }
@@ -215,6 +227,59 @@ fn fallback_plan(text: Text, kind: Text) -> Plan {
     case _ { "think" }
   }
   return {goal: text, steps: [{tool: tool, what: text, done_when: "the ask is answered"}]}
+}
+
+// ---------------------------------------------------------------- learning from earlier runs
+
+// The key a run is kept under: its ask, in lower case, at most 200 characters.
+fn lesson_key(text: Text) -> Text { return clip(flat(text), 200) }
+
+fn plan_text(plan: Plan) -> Text {
+  var out = "goal: " + plan.goal
+  for s in plan.steps { out = out + f"\n- {s.tool}: {s.what} (done when {s.done_when})" }
+  return out
+}
+
+fn verdict_of(report: Report) -> Text {
+  if report.failed == 0 and report.passed > 0 { return "checked" }
+  return "unchecked"
+}
+
+fn lesson_of(report: Report, plan: Plan) -> Lesson {
+  return {ask: report.ask, kind: report.kind, plan: plan_text(plan), answer: clip(report.answer, 2000), verdict: verdict_of(report)}
+}
+
+// The share of words two asks have in common, of the longer one's words.
+fn alike(a: Text, b: Text) -> Number {
+  let x = flat(a).replace("?", "").replace(",", "").replace(".", " ").words()
+  let y = flat(b).replace("?", "").replace(",", "").replace(".", " ").words()
+  if x.is_empty() or y.is_empty() { return 0 }
+  let common = (for w in x where y.contains(w) { 1 }).length()
+  return common / x.length().max(y.length())
+}
+
+// A lesson counts when it passed every check (or was kept) and is near:
+// by meaning 0.85 or more, or with seven in ten of its ask's words the same.
+fn lesson_near(l: LessonsLike, at: Number, asked: Text) -> Bool {
+  let m = l.matches[at]
+  if m.value.verdict != "checked" and m.value.verdict != "keep" { return false }
+  if l.by == "meaning" and m.score >= 0.85 { return true }
+  return alike(m.value.ask, asked) >= 0.7
+}
+
+// What the planner is shown from earlier runs: the nearest plan that worked, or "".
+fn lesson_hint(l: LessonsLike, asked: Text) -> Text {
+  for i in 0 until l.matches.length() {
+    if lesson_near(l, i, asked) {
+      return "A plan that passed every check for a similar earlier ask (\"" + clip(l.matches[i].value.ask, 200) + "\"); follow it where it fits:\n" + clip(l.matches[i].value.plan, 1200)
+    }
+  }
+  return ""
+}
+
+fn learned_note(hint: Text) -> Text {
+  if hint.is_empty() { return "" }
+  return " The planner was shown the checked plan of a similar earlier ask."
 }
 
 // One text for a model: the task, then the ask, the step and what came before.
@@ -749,7 +814,9 @@ workflow main(ask: Ask) -> Report {
   budget 60 model calls, 1500 seconds
   kind  = kind_of(ask.text)
   most  = steps_most(ask.most)
-  plan  = use_model planner(job({task: plan_task(kind, most), ask: ask.text, step: "", before: ""})) verify plan_ok(plan, most) retry 2 otherwise fallback_plan(ask.text, kind)
+  past  = recall lessons like ask.text
+  hint  = lesson_hint(past, ask.text)
+  plan  = use_model planner(job({task: plan_task(kind, most), ask: ask.text, step: "", before: hint})) verify plan_ok(plan, most) retry 2 otherwise fallback_plan(ask.text, kind)
   w1    = work_at(ask.text, plan, 0, [])
   d1    = match tool_at(plan, 0) {
     case "calc" { call do_calc(w1) }
@@ -793,7 +860,9 @@ workflow main(ask: Ask) -> Report {
   }
   done  = [d1, d2, d3, d4, d5]
   reply = use_model writer(job(reply_brief(ask.text, plan, done))) verify reply_ok(reply, done) retry 1 otherwise {text: plain_reply(done)}
-  report = report_of(ask, kind, plan, done, reply.text)
+  made  = report_of(ask, kind, plan, done, reply.text)
+  kept  = remember lesson_of(made, plan) in lessons under lesson_key(ask.text)
+  report = {..made, note: made.note + learned_note(hint)}
 }
 
 // ---------------------------------------------------------------- tests
@@ -1042,4 +1111,29 @@ test "with no model's plan, a drawing ask is drawn by Kosika itself" {
   expect r.planned_by.starts_with("Kosika")
   expect r.steps[0].tool == "draw"
   expect r.steps[0].ok
+}
+
+// ---------------------------------------------------------------- learning (2026-11-18)
+
+test "a run is kept, and a near ask is planned with its checked plan in view" {
+  answers planner: [{goal: "18% of 2450", steps: [{tool: "calc", what: "work out 18% of 2450", done_when: "the number is known"}]},
+                    {goal: "18% of 2600", steps: [{tool: "calc", what: "work out 18% of 2600", done_when: "the number is known"}]}]
+  answers counter: [{expression: "0.18*2450", meaning: "18% of 2450"}, {expression: "0.18*2450", meaning: "18% of 2450"},
+                    {expression: "0.18*2600", meaning: "18% of 2600"}, {expression: "0.18*2600", meaning: "18% of 2600"}]
+  answers writer: [{text: "It is 441."}, {text: "It is 468."}]
+  first = main({text: "What is 18% of 2450?", most: 2})
+  expect first.failed == 0
+  expect not first.note.contains("similar earlier ask")
+  second = main({text: "What is 18% of 2600?", most: 2})
+  expect second.note.contains("similar earlier ask")
+}
+
+test "only a plan that passed, and was not dropped, is shown again" {
+
+  expect lesson_key("  What IS\n 18%  of 2450? ") == "what is 18% of 2450?"
+  expect verdict_of({ask: "", kind: "", goal: "", planned_by: "", steps: [], answer: "", passed: 2, failed: 0, note: "", pictures: []}) == "checked"
+  expect verdict_of({ask: "", kind: "", goal: "", planned_by: "", steps: [], answer: "", passed: 1, failed: 1, note: "", pictures: []}) == "unchecked"
+  expect learned_note("") == ""
+  expect alike("What is 18% of 2450?", "what is 18% of 2600") == 0.8
+  expect alike("Why is the sky blue?", "What is 18% of 2450?") < 0.7
 }
