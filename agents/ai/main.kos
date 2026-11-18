@@ -119,7 +119,7 @@ fn has_digit(t: Text) -> Bool {
 fn kind_of(text: Text) -> Text {
   let t = text.lower()
   if has_any(t, ["write a function", "write a program", "write code", "in kosika", ".kos", "a function that", "a program that"]) { return "code" }
-  if has_digit(t) and has_any(t, ["+", "*", "/", "^", "%", "percent", "how much", "how many", "total", "average", "sum of", "times", "divided", "per "]) { return "maths" }
+  if has_digit(t) and has_any(t, ["+", "*", "/", "^", "%", "percent", "how much", "how many", "how long", "how far", "how fast", "speed", "total", "average", "sum of", "times", "divided", "per ", " km", " kg", " hours", " minutes", "cost", "price"]) { return "maths" }
   if has_any(t, ["plan", "project", "steps to", "schedule", "roadmap", "how do i", "how should i", "help me build"]) { return "project" }
   return "question"
 }
@@ -308,9 +308,25 @@ fn think_brief(w: Work) -> Brief {
           ask: w.ask, step: w.step.what, before: w.before}
 }
 
+// What a small model or a router sends back that is not an answer: an
+// error body, JSON where words were asked for, template marks, or one
+// sentence said over and over. Found on the first live run; "" when the
+// text is none of these.
+fn junk(text: Text) -> Text {
+  let t = text.trim()
+  if t.starts_with("{") or t.starts_with("[") { return "answer in plain words, not JSON" }
+  let low = t.lower()
+  if has_any(low, ["\"error\"", "internal error", "request body", "jsonrpc", "rate limit"]) { return "that is an error message, not an answer" }
+  if has_any(t, ["{{", "}}", "end thinking", ">!", "!<", "<think"]) { return "leave out template and thinking marks" }
+  for s in t.split(". ") {
+    if s.trim().length() > 20 and t.split(s.trim()).length() > 3 { return "say each thing once" }
+  }
+  return ""
+}
+
 fn said_ok(text: Text) -> Text {
   if text.trim().length() < 2 { return "give an answer" }
-  return ""
+  return junk(text)
 }
 
 fn review_question(w: Work) -> Text {
@@ -322,7 +338,7 @@ workflow review(w: Work) -> Decision {
 }
 
 fn think_done(w: Work, said: Said, judged: Decision) -> Done {
-  if said.text.trim().is_empty() {
+  if said.text.trim().is_empty() or not junk(said.text).is_empty() {
     return {n: w.n, tool: "think", what: w.step.what, answer: "No answer was given.", check: "nothing to check", ok: false, ran: true}
   }
   let check = if judged.answer { "a second model read it and quoted where it does what was asked" } else { "a second model did not find that it does what was asked: " + clip(judged.reason, 200) }
@@ -332,7 +348,7 @@ fn think_done(w: Work, said: Said, judged: Decision) -> Done {
 workflow do_think(w: Work) -> Done {
   said   = use_model thinker(job(think_brief(w))) verify said_ok(said.text) retry 1 otherwise {text: ""}
   shown  = {..w, before: said.text}
-  judged = match said.text.trim().is_empty() {
+  judged = match said.text.trim().is_empty() or not junk(said.text).is_empty() {
     case true { {answer: false, confidence: 0, reason: "there was no answer"} }
     case _ { call review(shown) }
   }
@@ -361,6 +377,8 @@ fn computed(done: Done[]) -> Text[] {
 // "" when the reply carries every computed number exactly.
 fn reply_ok(reply: Said, done: Done[]) -> Text {
   if reply.text.trim().length() < 2 { return "write the reply" }
+  let bad = junk(reply.text)
+  if not bad.is_empty() { return bad }
   for n in computed(done) {
     if not reply.text.contains(n) { return f"the reply must give the number {n} exactly as computed" }
   }
@@ -371,12 +389,15 @@ fn reply_ok(reply: Said, done: Done[]) -> Text {
 fn plain_reply(done: Done[]) -> Text {
   var out = ""
   for d in done {
-    if d.ran {
-      let mark = if d.ok { "" } else { " (not checked)" }
-      out = out + f"{d.answer}{mark}\n\n"
-    }
+    if d.ran and d.ok and junk(d.answer).is_empty() { out = out + f"- {d.answer}\n" }
   }
-  return if out.is_empty() { "Kosika AI could not do this ask." } else { out.trim() }
+  var missed = 0
+  for d in done {
+    if d.ran and not (d.ok and junk(d.answer).is_empty()) { missed = missed + 1 }
+  }
+  if out.is_empty() { return "Kosika AI could not do this ask: no step gave an answer that passed its check." }
+  let tail = if missed == 0 { "" } else { f"\n{missed} more step(s) gave no answer that passed its check, so they are left out." }
+  return "Here is what Kosika worked out and checked:\n" + out + tail
 }
 
 fn ran(done: Done[]) -> Done[] {
@@ -495,7 +516,7 @@ test "a wrong number in the reply is refused, and Kosika writes it instead" {
   answers counter: [{expression: "0.18*2450", meaning: "18% of 2450"}]
   answers writer: [{text: "It is about 440."}, {text: "It is roughly 440."}]
   r = main({text: "What is 18% of 2450?", most: 2})
-  expect r.answer == "18% of 2450: 0.18*2450 = 441"
+  expect r.answer.contains("- 18% of 2450: 0.18*2450 = 441")
 }
 
 test "a plan that never passes is replaced by Kosika's own" {
@@ -531,4 +552,38 @@ test "a program that fails its tests is shown what failed and fixed once" {
   expect r.steps[0].ok
   expect r.steps[0].answer.contains("n * 2")
   expect r.steps[0].check.contains("all passed")
+}
+
+// ---------------------------------------------------------------- what the first live run sent back (2026-11-18)
+
+test "error bodies, JSON and template marks are not answers" {
+  expect junk("{\"jsonrpc\": \"2.0\", \"error\": {\"code\": -32603, \"message\": \"Internal error\"}, \"id\": 0}") != ""
+  expect junk("{\"\": \"\"}") != ""
+  expect junk("{\": 400: Request body must be JSON\": \"Error parsing request body: invalid JSON\"}") != ""
+  expect junk("{\"/\": \"speed = distance / time\"}") != ""
+  expect junk("It is 441. Yes, 441 is more than 400.{{\": \"}} end thinking") != ""
+  expect junk("Yes, 441 is more than 400 by 41. Yes, 441 is more than 400 by 41. Yes, 441 is more than 400 by 41.") != ""
+  expect junk("18% of 2450 is 441, so yes, it is more than 400.") == ""
+}
+
+test "speed and distance asks are maths" {
+  expect kind_of("A train goes 180 km in 2.5 hours. What is its speed, and how long would it take to go 420 km at that speed?") == "maths"
+}
+
+test "a junk reply is refused twice, then Kosika writes it from the checked steps" {
+  answers planner: [{goal: "Find 18% of 2450", steps: [{tool: "calc", what: "work out 18% of 2450", done_when: "the number is given"}]}]
+  answers counter: [{expression: "0.18*2450", meaning: "18% of 2450"}]
+  answers writer: [{text: "{\"answer\": \"441\"}"}, {text: "441 {{ end thinking"}]
+  r = main({text: "What is 18% of 2450?", most: 2})
+  expect r.answer.starts_with("Here is what Kosika worked out and checked:")
+  expect r.answer.contains("0.18*2450 = 441")
+}
+
+test "an error body from the thinker is never reviewed or passed on" {
+  answers planner: [{goal: "Explain seasons", steps: [{tool: "think", what: "explain why Earth has seasons", done_when: "the axial tilt is named"}]}]
+  answers thinker: [{text: "{\"\": \"\"}"}, {text: "{\"jsonrpc\": \"2.0\", \"error\": {\"code\": -32603}}"}]
+  answers writer: [{text: "{\"\": \"\"}"}, {text: "{\"\": \"\"}"}]
+  r = main({text: "Why do we have seasons on Earth?", most: 2})
+  expect not r.steps[0].ok
+  expect r.answer.starts_with("Kosika AI could not do this ask")
 }
