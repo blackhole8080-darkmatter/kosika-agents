@@ -663,8 +663,18 @@ fn drawn_text(w: Work) -> Text {
   return w.ask
 }
 
-fn do_draw(w: Work) -> Done {
+// What is drawn: the step's own words, or, when Kosika Designs cannot read
+// a formula the planner rewrote, the person's ask as they wrote it.
+fn draw_words(w: Work) -> Text {
   let text = drawn_text(w)
+  if text == w.ask or not pl_wants(w.ask) { return text }
+  let f = pl_for(text)
+  if f.problems.is_empty() and not f.svg.is_empty() { return text }
+  return w.ask
+}
+
+fn do_draw(w: Work) -> Done {
+  let text = draw_words(w)
   let f = pl_for(text)
   if not f.problems.is_empty() or f.svg.is_empty() {
     let why = if f.problems.is_empty() { "no drawing came back" } else { f.problems[0] }
@@ -1331,4 +1341,11 @@ test "a maths plan with no calc step is sent back, and the next one computes" {
   expect r.steps[0].tool == "calc"
   expect r.steps[0].ok
   expect r.planned_by == "a model, checked by Kosika"
+}
+
+test "a formula the planner rewrote so Designs cannot read it is drawn from the ask" {
+  bad: Work = {ask: "Plot y = x^2", goal: "a parabola", n: 1, step: {tool: "draw", what: "Plot y = x^2) on the Cartesian plane", done_when: "it is drawn"}, before: ""}
+  expect draw_words(bad) == "Plot y = x^2"
+  good: Work = {ask: "Plot y = x^2", goal: "a parabola", n: 1, step: {tool: "draw", what: "plot y = x^2 - 1", done_when: "it is drawn"}, before: ""}
+  expect draw_words(good) == "plot y = x^2 - 1"
 }
