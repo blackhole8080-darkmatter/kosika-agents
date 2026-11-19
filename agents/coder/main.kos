@@ -2017,8 +2017,12 @@ fn method_asked(task: Task) -> MethodAsked {
   return {kind: fixed, name: name, text: task.text}
 }
 
+// Also after tests that passed: a model's tests can call the helper
+// function straight from Python and pass while Kosika itself has never
+// heard of the method (gcd, lcm and factorial on 2026-11-19). Registering
+// changes nothing when the Method line is already in the table.
 fn needs_registering(asked: MethodAsked, tried: Result) -> Bool {
-  return not tried.last.passed and unknown_method(tried.last.output) == asked.name
+  return tried.last.passed or unknown_method(tried.last.output) == asked.name
 }
 
 // A Python type as Kosika names it, or "" when there is no plain match.
@@ -2049,17 +2053,25 @@ fn registered(text: Text, asked: MethodAsked) -> Text {
   let head = "def _" + asked.name + "("
   let at = plain.index_of(head).or(default: -1)
   if at < 0 { return text }
-  let signature = plain.drop(at + head.length()).split(":\n")[0]
-  let params = signature.split(")")[0].split(",").drop(1)
-  let returned = if signature.contains("->") { kosika_type(signature.split("->")[1]) } else { "" }
+  let found = plain.drop(at + head.length()).split(":\n")[0]
+  let params = found.split(")")[0].split(",").drop(1)
+  // A type the function does not write down comes from the ask's own
+  // signature, "name(p: T)" and "giving a T", when it has one.
+  let asked_sig = signature(asked)
+  let written = if found.contains("->") { kosika_type(found.split("->")[1]) } else { "" }
+  let returned = if written.is_empty() and asked_sig.ok { asked_sig.result } else { written }
   if returned.is_empty() { return text }
   var shown: Text[] = []
+  var i = 0
   for param in params {
     let parts = param.split(":")
-    if parts.length() != 2 { return text }
-    let kind = kosika_type(parts[1])
-    if kind.is_empty() { return text }
-    shown = shown.append("(\"" + parts[0].trim() + "\", \"" + kind + "\")")
+    let name = parts[0].split("=")[0].trim()
+    let typed = if parts.length() == 2 { kosika_type(parts[1].split("=")[0]) } else { "" }
+    let from_ask = if asked_sig.ok and i < asked_sig.params.length() { asked_sig.params[i].type } else { "" }
+    let kind = if typed.is_empty() { from_ask } else { typed }
+    if kind.is_empty() or name.is_empty() { return text }
+    shown = shown.append("(\"" + name + "\", \"" + kind + "\")")
+    i += 1
   }
   let args = if shown.is_empty() { "()" } else { "(" + shown.join(", ") + (if shown.length() == 1 { ",)" } else { ")" }) }
   let receiver = if asked.kind == "array" { "ANY_ARRAY" } else { "\"" + asked.kind + "\"" }
@@ -3346,6 +3358,20 @@ test "a method written but not registered is registered by the program" {
   expect kosika_type("dict") == ""
   failed: Result = {text: "t", last: {task: "t", output: "'Text' has no method 'is_digits'; available", passed: false, known: true}}
   expect needs_registering(asked, failed)
+}
+
+test "a Number method whose tests passed without Kosika is still registered" {
+  asked: MethodAsked = {kind: "Number", name: "gcd", text: "add a Number method gcd(other: Number) that gives the greatest common divisor of two whole numbers, giving a Number"}
+  passed: Result = {text: "t", last: {task: "t", output: "3 passed", passed: true, known: true}}
+  expect needs_registering(asked, passed)
+  bare = "def _gcd(number, other):\n    return 1\n\n\nMETHODS = (\n    Method(\"Number\", \"abs\", (), \"Number\", f),\n)\n"
+  now = registered(bare, asked)
+  expect now.contains("    Method(\"Number\", \"gcd\", ((\"other\", \"Number\"),), \"Number\", _gcd),")
+  expect registered(now, asked) == now
+  typed = registered("def _lcm(number: int, other: int = 1) -> int:\n    return 1\nM = (\n    Method(\"Number\", \"abs\", (), \"Number\", f),\n)\n", {kind: "Number", name: "lcm", text: ""})
+  expect typed.contains("Method(\"Number\", \"lcm\", ((\"other\", \"Number\"),), \"Number\", _lcm),")
+  unsure = "def _factorial(number):\n    return 1\nM = (\n    Method(\"Number\", \"abs\", (), \"Number\", f),\n)\n"
+  expect registered(unsure, {kind: "Number", name: "factorial", text: "add factorial"}) == unsure
 }
 
 test "an edit that pastes a function the file already has changes nothing" {
