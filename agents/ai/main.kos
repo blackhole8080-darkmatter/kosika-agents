@@ -245,6 +245,28 @@ fn plan_fit(plan: Plan, most: Number, kind: Text) -> Text {
   return plan_prefers(plan, kind)
 }
 
+// Kosika's own maths and Designs come first (Aryan, 2026-11-19): a think
+// step that only wants a number goes to calc, and one that only wants a
+// drawing goes to draw, so Kosika computes or draws it instead of a model
+// saying it in words. A step that also asks for words (explain, why,
+// compare, describe, write) stays with think.
+fn words_wanted(what: Text) -> Bool {
+  return has_any(what.lower(), ["explain", "why", "compare", "describe", "write", "summar", "discuss", "whether", "is it", "should"])
+}
+
+fn kosika_hand(s: Step) -> Text {
+  if s.tool != "think" or words_wanted(s.what) { return s.tool }
+  return match kind_of(s.what) {
+    case "maths" { "calc" }
+    case "drawing" { "draw" }
+    case _ { s.tool }
+  }
+}
+
+fn kosika_first(plan: Plan) -> Plan {
+  return {goal: plan.goal, steps: for s in plan.steps { {tool: kosika_hand(s), what: s.what, done_when: s.done_when} }}
+}
+
 // When no model gives a plan that passes, Kosika plans by itself: one step
 // with the hand the ask's kind suits.
 fn fallback_plan(text: Text, kind: Text) -> Plan {
@@ -927,7 +949,8 @@ workflow main(ask: Ask) -> Report {
   most  = steps_most(ask.most)
   past  = recall lessons like ask.text
   hint  = lesson_hint(past, ask.text)
-  plan  = use_model planner(job({task: plan_task(kind, most), ask: ask.text, step: "", before: plan_before(brain.prompt, hint)})) verify plan_fit(plan, most, kind) retry 2 otherwise fallback_plan(ask.text, kind)
+  draft = use_model planner(job({task: plan_task(kind, most), ask: ask.text, step: "", before: plan_before(brain.prompt, hint)})) verify plan_fit(draft, most, kind) retry 2 otherwise fallback_plan(ask.text, kind)
+  plan  = kosika_first(draft)
   w1    = work_at(ask.text, plan, 0, [])
   d1    = match tool_at(plan, 0) {
     case "calc" { call do_calc(w1) }
@@ -984,6 +1007,22 @@ test "an ask is sorted by its own words" {
   expect kind_of("Write a function that reverses a list, in Kosika") == "code"
   expect kind_of("Plan a two-week project to learn graph theory") == "project"
   expect kind_of("Why is the sky blue?") == "question"
+}
+
+test "Kosika's own maths and Designs come before a model's words" {
+  sum: Step = {tool: "think", what: "work out 18% of 2450", done_when: "a number"}
+  pic: Step = {tool: "think", what: "plot y = x^2 - 3x as a graph", done_when: "drawn"}
+  why: Step = {tool: "think", what: "explain why 18% of 2450 is more than 400", done_when: "said"}
+  calc: Step = {tool: "calc", what: "work out 18% of 2450", done_when: "a number"}
+  expect kosika_hand(sum) == "calc"
+  expect kosika_hand(pic) == "draw"
+  expect kosika_hand(why) == "think"
+  expect kosika_hand(calc) == "calc"
+  plan: Plan = {goal: "a tip and a picture", steps: [sum, pic, why]}
+  expect kosika_first(plan).steps.length() == 3
+  expect kosika_first(plan).steps[0].tool == "calc"
+  expect kosika_first(plan).steps[1].tool == "draw"
+  expect kosika_first(plan).steps[2].tool == "think"
 }
 
 test "a plan runs only when its shape is right" {
