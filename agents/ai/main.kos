@@ -50,7 +50,7 @@ import "std/math.kos"
 import "std/designs_plot.kos"
 import "std/brain_core.kos"
 
-export [Ask, Step, Plan, Done, Report, kind_of, plan_ok, fallback_plan, formula_ok, code_shape, reply_ok, brain_thought, plan_before, step_verdict, brain_outcome, brain_checked_by, brain_done, main]
+export [Ask, Step, Plan, Done, Report, kind_of, plan_ok, plan_prefers, plan_fit, fallback_plan, formula_ok, code_shape, reply_ok, brain_thought, plan_before, step_verdict, brain_outcome, brain_checked_by, brain_done, main]
 
 record Ask { text: Text most: Number }
 record Step { tool: Text what: Text done_when: Text }
@@ -211,7 +211,7 @@ fn steps_most(most: Number) -> Number {
 fn tools() -> Text[] { return ["think", "calc", "code", "look", "draw"] }
 
 fn plan_task(kind: Text, most: Number) -> Text {
-  return f"You are the planner of Kosika AI. Split the ask into at most {most} small steps, in order; use one step when one is enough. Each step uses exactly one tool. calc: a number worked out from a formula (Kosika computes it, so never work the number out yourself; one formula per step, and when the ask wants several numbers, such as a tip and a total, give each number its own calc step). code: a small program in Kosika with tests. look: a fact found on a Wikipedia page and quoted from it (say in what which page or topic to read). draw: a drawing of a formula or shape by Kosika Designs (say in what the formula, such as plot y = x^2 - 3x). think: reasoning, explaining or writing in words. Give each step: tool (calc, code, look, draw or think), what (one sentence saying what this step produces), done_when (one sentence: how to tell it is done). The ask looks like: {kind}. Answer as JSON: {{\"goal\": \"...\", \"steps\": [{{\"tool\": \"...\", \"what\": \"...\", \"done_when\": \"...\"}}]}}"
+  return f"You are the planner of Kosika AI. Split the ask into at most {most} small steps, in order; use one step when one is enough. Each step uses exactly one tool. calc: a number worked out from a formula (Kosika computes it, so never work the number out yourself; one formula per step, and when the ask wants several numbers, such as a tip and a total, give each number its own calc step). code: a small program in Kosika with tests. look: a fact found on a Wikipedia page and quoted from it (say in what which page or topic to read). draw: a drawing of a formula or shape by Kosika Designs (say in what the formula, such as plot y = x^2 - 3x). think: reasoning, explaining or writing in words. Kosika's own hands come first: every number goes to a calc step, never to think, and whenever a curve, a shape or a picture of a formula would help the person, add a draw step; use think only for what calc and draw cannot do. Give each step: tool (calc, code, look, draw or think), what (one sentence saying what this step produces), done_when (one sentence: how to tell it is done). The ask looks like: {kind}. Answer as JSON: {{\"goal\": \"...\", \"steps\": [{{\"tool\": \"...\", \"what\": \"...\", \"done_when\": \"...\"}}]}}"
 }
 
 // "" when the plan can run; otherwise why not, which the planner is shown.
@@ -225,6 +225,24 @@ fn plan_ok(plan: Plan, most: Number) -> Text {
     if s.done_when.trim().length() < 5 { return "say for each step how to tell it is done" }
   }
   return ""
+}
+
+// Kosika's own hands come first: an ask with numbers to work out is
+// planned with a calc step, so std/math computes them, and an ask for a
+// picture with a draw step, so Kosika Designs draws it. "" when the plan
+// uses them where they fit.
+fn plan_prefers(plan: Plan, kind: Text) -> Text {
+  let used = for s in plan.steps { s.tool }
+  if kind == "maths" and not used.contains("calc") { return "this ask has numbers to work out: give each number its own calc step, so Kosika computes it with std/math" }
+  if kind == "drawing" and not used.contains("draw") { return "this ask wants a picture: add a draw step, so Kosika Designs draws it from the formula" }
+  return ""
+}
+
+// The plan's shape first, then whether it uses Kosika's own hands.
+fn plan_fit(plan: Plan, most: Number, kind: Text) -> Text {
+  let shape = plan_ok(plan, most)
+  if not shape.is_empty() { return shape }
+  return plan_prefers(plan, kind)
 }
 
 // When no model gives a plan that passes, Kosika plans by itself: one step
@@ -909,7 +927,7 @@ workflow main(ask: Ask) -> Report {
   most  = steps_most(ask.most)
   past  = recall lessons like ask.text
   hint  = lesson_hint(past, ask.text)
-  plan  = use_model planner(job({task: plan_task(kind, most), ask: ask.text, step: "", before: plan_before(brain.prompt, hint)})) verify plan_ok(plan, most) retry 2 otherwise fallback_plan(ask.text, kind)
+  plan  = use_model planner(job({task: plan_task(kind, most), ask: ask.text, step: "", before: plan_before(brain.prompt, hint)})) verify plan_fit(plan, most, kind) retry 2 otherwise fallback_plan(ask.text, kind)
   w1    = work_at(ask.text, plan, 0, [])
   d1    = match tool_at(plan, 0) {
     case "calc" { call do_calc(w1) }
@@ -1284,4 +1302,33 @@ test "each run is told to the Brain, and the next ask is planned with it in view
   expect second.passed == 1
   after = brain_sense(brain_thought({text: "and again?", most: 2}))
   expect after.working.length() == 2
+}
+
+// ---------------------------------------------------------------- Kosika maths and Designs first (2026-11-19)
+
+test "a plan uses Kosika maths for numbers and Designs for pictures" {
+  words: Plan = {goal: "Find 18% of 2450", steps: [{tool: "think", what: "work out 18% of 2450 in my head", done_when: "a number is given"}]}
+  expect plan_prefers(words, "maths").contains("calc step")
+  expect plan_fit(words, 3, "maths").contains("std/math")
+  summed: Plan = {goal: "Find 18% of 2450", steps: [{tool: "calc", what: "work out 18% of 2450", done_when: "a number is given"}]}
+  expect plan_fit(summed, 3, "maths") == ""
+  told: Plan = {goal: "Plot y = x^2", steps: [{tool: "think", what: "describe the parabola y = x^2", done_when: "it is described"}]}
+  expect plan_fit(told, 3, "drawing").contains("Kosika Designs")
+  drawn: Plan = {goal: "Plot y = x^2", steps: [{tool: "draw", what: "plot y = x^2", done_when: "it is drawn"}]}
+  expect plan_fit(drawn, 3, "drawing") == ""
+  // A question in words may be answered in words.
+  expect plan_fit(words, 3, "question") == ""
+  // The shape is checked first.
+  expect plan_fit({goal: "", steps: []}, 3, "maths") == "give the goal in a sentence"
+}
+
+test "a maths plan with no calc step is sent back, and the next one computes" {
+  answers planner: [{goal: "Find 18% of 2450", steps: [{tool: "think", what: "work out 18% of 2450 in words", done_when: "a number is given"}]},
+                    {goal: "Find 18% of 2450", steps: [{tool: "calc", what: "work out 18% of 2450", done_when: "the number is given"}]}]
+  answers counter: [{expression: "0.18*2450", meaning: "18% of 2450"}, {expression: "0.18*2450", meaning: "18% of 2450"}]
+  answers writer: [{text: "18% of 2450 is 441."}]
+  r = main({text: "What is 18% of 2450?", most: 2})
+  expect r.steps[0].tool == "calc"
+  expect r.steps[0].ok
+  expect r.planned_by == "a model, checked by Kosika"
 }
