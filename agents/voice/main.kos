@@ -1,0 +1,245 @@
+// Kosi's ears and mouth: what to do with something heard, and how to say
+// an answer aloud. Plain code and no model, so it is exact and instant;
+// the voice loop on the laptop (kosi_voice.py, beside this file) runs it
+// once for each thing it hears and once for each answer it speaks.
+//
+//   kosika test main.kos
+//   kosika run main.kos --input heard.json
+//
+// heard.json holds {"heard": {"text": "hey kosi what time is it", "awake": false}}.
+//
+// What was heard is for Kosi only when it starts with the wake words ("hey
+// Kosi", "OK Kosi", "Kosi,"), or when a talk is already going on (awake: a
+// few seconds after Kosi last spoke). Speech recognisers write the name in
+// many ways ("cosy", "cozy", "kosy", "cosi"), and all of them are heard as
+// Kosi. Then the ask goes where it fits:
+//
+//   stop     "stop", "quiet", "never mind": Kosi stops talking.
+//   sleep    "that's all", "goodbye", "go to sleep": the talk ends.
+//   ai       work to plan and check ("plan my week", "build a ...", "solve ..."):
+//            Kosika AI, which takes minutes and says when it is done.
+//   kosi     anything else: Kosi, the assistant, answers at once.
+//
+// spoken() turns an answer into short sentences that sound right: no code
+// blocks, no Markdown marks, no links read letter by letter, and nothing
+// longer than a breath, so the first sentence is heard while the rest are
+// still being made into speech.
+
+record Heard { text: Text awake: Bool }
+// What to do with it. to_kosi is false when it was not for Kosi at all.
+record Turn { to_kosi: Bool ask: Text route: Text reply: Text listen_again: Bool }
+record Answer { text: Text }
+record Spoken { sentences: Text[] }
+
+// How speech recognisers write "Kosi", in lower case.
+fn names() -> Text[] {
+  return ["kosi", "kosy", "cosi", "cosy", "cozy", "kozy", "kosie", "cosie", "khosi", "kosee", "cosey", "kosika"]
+}
+
+fn wake_leads() -> Text[] {
+  return ["hey", "hi", "ok", "okay", "hello", "yo"]
+}
+
+// The words of what was heard, in lower case, with the marks a recogniser
+// adds around them taken off.
+fn heard_words(text: Text) -> Text[] {
+  var out: Text[] = []
+  for word in text.lower().replace(",", " ").replace("!", " ").replace("?", " ").replace(".", " ").words() {
+    let bare = word.trim().trim_marks("'\"")
+    if bare.length() > 0 { out = out.concat([bare]) }
+  }
+  return out
+}
+
+// How many words at the start of what was heard are the wake words:
+// "hey kosi" is 2, "kosi" is 1, and 0 when it does not start with them.
+fn wake_length(words: Text[]) -> Number {
+  let first = words.first().or("")
+  if names().contains(first) { return 1 }
+  if wake_leads().contains(first) and words.length() > 1 and names().contains(words.slice(1, 2).first().or("")) { return 2 }
+  return 0
+}
+
+// What was heard with the wake words taken off, keeping its own spelling.
+fn after_wake(text: Text, count: Number) -> Text {
+  let words = text.trim().words()
+  return words.slice(count, words.length()).join(" ").trim_marks(",.!? ").trim()
+}
+
+fn said_alone(ask: Text, phrases: Text[]) -> Bool {
+  let plain = heard_words(ask).join(" ")
+  return phrases.contains(plain)
+}
+
+fn route_of(ask: Text) -> Text {
+  let plain = heard_words(ask).join(" ")
+  if plain == "" { return "kosi" }
+  if said_alone(ask, ["stop", "stop it", "stop talking", "quiet", "be quiet", "shush", "shh", "hush", "never mind", "nevermind", "cancel", "enough", "pause"]) { return "stop" }
+  if said_alone(ask, ["that's all", "thats all", "that is all", "goodbye", "bye", "good bye", "bye kosi", "go to sleep", "sleep", "thanks that's all", "thank you that's all", "see you", "good night"]) { return "sleep" }
+  let words = heard_words(ask)
+  let first = words.first().or("")
+  let leads = ["plan", "build", "make", "create", "write", "solve", "design", "develop", "research", "investigate", "prove", "draw", "explain"]
+  let asks = ["work out how", "figure out", "come up with", "step by step", "help me build", "help me plan", "help me write", "help me make", "can you build", "can you make", "can you write", "can you plan", "can you solve"]
+  var deep = leads.contains(first) and words.length() > 2
+  for phrase in asks {
+    if plain.contains(phrase) { deep = true }
+  }
+  // A quick question stays with Kosi, however it starts.
+  if plain.starts_with("what time") or plain.starts_with("remind me") or plain.starts_with("set a timer") { deep = false }
+  return if deep { "ai" } else { "kosi" }
+}
+
+fn reply_for(route: Text) -> Text {
+  return match route {
+    case "stop" { "" }
+    case "sleep" { "Okay. Say hey Kosi when you need me." }
+    case "ai" { "On it. I'll work through that and tell you when it's done." }
+    case _ { "" }
+  }
+}
+
+workflow main(heard: Heard) -> Turn {
+  turn = turn_of(heard)
+}
+
+fn turn_of(heard: Heard) -> Turn {
+  let words = heard_words(heard.text)
+  let woken = wake_length(words)
+  if woken == 0 and not heard.awake {
+    return {to_kosi: false, ask: "", route: "", reply: "", listen_again: false}
+  }
+  let ask = if woken > 0 { after_wake(heard.text, woken) } else { heard.text.trim() }
+  if ask == "" {
+    // Only the name: Kosi answers and listens.
+    return {to_kosi: true, ask: "", route: "wake", reply: "Yes?", listen_again: true}
+  }
+  let route = route_of(ask)
+  return {to_kosi: true, ask: ask, route: route, reply: reply_for(route), listen_again: route != "sleep"}
+}
+
+// ------------------------------------------------------------ speaking
+
+// An answer as it should sound: code blocks and links left out, Markdown
+// marks taken off, arrows and signs said as words.
+fn speakable(text: Text) -> Text {
+  var out: Text[] = []
+  var in_code = false
+  for line in text.split("\n") {
+    let bare = line.trim()
+    if bare.starts_with("```") {
+      if not in_code { out = out.concat(["(I've put the code on screen.)"]) }
+      in_code = not in_code
+    } else if not in_code and bare.length() > 0 {
+      var words: Text[] = []
+      for word in bare.words() {
+        let said = if word.starts_with("http://") or word.starts_with("https://") { "the link on screen" } else { word }
+        words = words.concat([said])
+      }
+      let joined = words.join(" ")
+      let cleaned = joined.replace("**", "").replace("__", "").replace("`", "").replace("# ", "").replace("#", "").replace(" -> ", " gives ").replace("->", " gives ").replace(" => ", " gives ").replace(" & ", " and ").replace(" % ", " percent ").replace("%", " percent")
+      let lead = cleaned.trim_marks("-*>• ").trim()
+      if lead.length() > 0 { out = out.concat([if lead.ends_with(".") or lead.ends_with("?") or lead.ends_with("!") or lead.ends_with(":") { lead } else { lead + "." }]) }
+    }
+  }
+  return out.join(" ").replace("  ", " ").trim()
+}
+
+// A long piece cut at word boundaries into pieces of at most `most` letters.
+fn pieces(text: Text, most: Number) -> Text[] {
+  var out: Text[] = []
+  var now = ""
+  for word in text.words() {
+    if now.length() > 0 and now.length() + 1 + word.length() > most {
+      out = out.concat([now])
+      now = word
+    } else {
+      now = if now == "" { word } else { now + " " + word }
+    }
+  }
+  if now.length() > 0 { out = out.concat([now]) }
+  return out
+}
+
+// The answer as sentences to say one after another: at most 12, each no
+// longer than a breath (220 letters), very short ones joined to the next.
+fn sentences_of(text: Text) -> Text[] {
+  let marked = speakable(text).replace(". ", ".\n").replace("? ", "?\n").replace("! ", "!\n").replace(": ", ":\n")
+  var out: Text[] = []
+  var carry = ""
+  for part in marked.split("\n") {
+    let piece = if carry == "" { part.trim() } else { carry + " " + part.trim() }
+    if piece.length() > 0 and piece.length() < 18 {
+      carry = piece
+    } else if piece.length() > 0 {
+      carry = ""
+      out = out.concat(pieces(piece, 220))
+    }
+  }
+  if carry.length() > 0 { out = out.concat([carry]) }
+  return out.take(12)
+}
+
+workflow speak(answer: Answer) -> Spoken {
+  spoken = {sentences: sentences_of(answer.text)}
+}
+
+// ------------------------------------------------------------------ tests
+
+test "only what is said to Kosi is for Kosi" {
+  expect turn_of({text: "Hey Kosi, what time is it?", awake: false}).ask == "what time is it"
+  expect turn_of({text: "hey cosy what time is it", awake: false}).to_kosi
+  expect turn_of({text: "OK Kozy, remind me to call Sam", awake: false}).ask == "remind me to call Sam"
+  expect turn_of({text: "Kosi, tell me a joke.", awake: false}).ask == "tell me a joke"
+  expect turn_of({text: "the cosy cafe on the corner", awake: false}).to_kosi == false
+  expect turn_of({text: "what time is it", awake: false}).to_kosi == false
+  expect turn_of({text: "and tomorrow?", awake: true}).ask == "and tomorrow?"
+  expect turn_of({text: "and tomorrow?", awake: true}).route == "kosi"
+}
+
+test "the name alone wakes Kosi to listen" {
+  woke = turn_of({text: "Hey Kosi.", awake: false})
+  expect woke.route == "wake"
+  expect woke.reply == "Yes?"
+  expect woke.listen_again
+}
+
+test "stop and goodbye are understood" {
+  expect turn_of({text: "Kosi stop", awake: false}).route == "stop"
+  expect turn_of({text: "never mind", awake: true}).route == "stop"
+  expect turn_of({text: "Never mind.", awake: true}).reply == ""
+  bye = turn_of({text: "that's all, thanks", awake: true})
+  expect route_of("that's all") == "sleep"
+  expect bye.route == "kosi"
+  night = turn_of({text: "good night", awake: true})
+  expect night.route == "sleep"
+  expect night.listen_again == false
+}
+
+test "work to plan and check goes to Kosika AI" {
+  expect route_of("plan my week around the exams") == "ai"
+  expect route_of("build a small game in Kosika") == "ai"
+  expect route_of("can you solve this equation step by step") == "ai"
+  expect route_of("help me plan a trip to Kyoto") == "ai"
+  expect route_of("what time is it") == "kosi"
+  expect route_of("remind me to build the shelf") == "kosi"
+  expect route_of("plan") == "kosi"
+  expect route_of("why is the sky blue") == "kosi"
+  expect turn_of({text: "hey kosi plan my week", awake: false}).reply.starts_with("On it.")
+}
+
+test "an answer is said, not read out" {
+  expect speakable("**Done.** See https://example.com for more") == "Done. See the link on screen for more."
+  expect speakable("Steps:\n- boil water\n- add tea") == "Steps: boil water. add tea."
+  expect speakable("Here:\n```\nprint(1)\n```\nThat prints 1") == "Here: (I've put the code on screen.) That prints 1."
+  expect speakable("a -> b, 15% off") == "a gives b, 15 percent off."
+}
+
+test "answers are cut into sentences a breath long" {
+  said = sentences_of("It is 6 pm. You have two reminders. Shall I read them?")
+  expect said == ["It is 6 pm. You have two reminders.", "Shall I read them?"]
+  long = sentences_of("word ".repeat(100))
+  expect long.length() == 3
+  expect long.first().or("").length() <= 220
+  expect sentences_of("").length() == 0
+  expect sentences_of("Yes.") == ["Yes."]
+}
