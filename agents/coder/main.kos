@@ -2049,17 +2049,22 @@ fn registered(text: Text, asked: MethodAsked) -> Text {
   let head = "def _" + asked.name + "("
   let at = plain.index_of(head).or(default: -1)
   if at < 0 { return text }
-  let signature = plain.drop(at + head.length()).split(":\n")[0]
-  let params = signature.split(")")[0].split(",").drop(1)
-  let returned = if signature.contains("->") { kosika_type(signature.split("->")[1]) } else { "" }
+  let written = plain.drop(at + head.length()).split(":\n")[0]
+  let params = written.split(")")[0].split(",").drop(1)
+  // What the request itself says, for anything Python names only as Any.
+  let asked_sig = signature(asked)
+  let annotated = if written.contains("->") { kosika_type(written.split("->")[1]) } else { "" }
+  let returned = if annotated.is_empty() and asked_sig.ok { asked_sig.result } else { annotated }
   if returned.is_empty() { return text }
   var shown: Text[] = []
-  for param in params {
-    let parts = param.split(":")
+  for k in 0 until params.length() {
+    let parts = params[k].split(":")
     if parts.length() != 2 { return text }
-    let kind = kosika_type(parts[1])
+    let typed = kosika_type(parts[1])
+    let kind = if typed.is_empty() and asked_sig.ok and k < asked_sig.params.length() { asked_sig.params[k].type } else { typed }
     if kind.is_empty() { return text }
-    shown = shown.append("(\"" + parts[0].trim() + "\", \"" + kind + "\")")
+    let name = if typed.is_empty() and asked_sig.ok and k < asked_sig.params.length() { asked_sig.params[k].name } else { parts[0].trim() }
+    shown = shown.append("(\"" + name + "\", \"" + kind + "\")")
   }
   let args = if shown.is_empty() { "()" } else { "(" + shown.join(", ") + (if shown.length() == 1 { ",)" } else { ")" }) }
   let receiver = if asked.kind == "array" { "ANY_ARRAY" } else { "\"" + asked.kind + "\"" }
@@ -2877,8 +2882,26 @@ fn signature(asked: MethodAsked) -> Signature {
     }
   }
   if result.is_empty() and asked.text.contains("gives the text") { result = "Text" }
+  // With no "giving a T", the request's own examples say what it gives:
+  // `12.gcd(18)` is `6` gives a Number.
+  if result.is_empty() { result = example_type(examples_of(asked.text)) }
   if result.is_empty() { return none }
   return {ok: true, params: params, result: result}
+}
+
+// The Kosika type every example's value has, or "" when they differ or
+// there are none: true or false a Bool, a quoted value a Text, a number a
+// Number.
+fn example_type(examples: Example[]) -> Text {
+  var found = ""
+  for e in examples {
+    let v = e.value.trim()
+    let t = if v == "true" or v == "false" { "Bool" } else if v.starts_with("\"") and v.ends_with("\"") { "Text" } else if v.to_number().exists() { "Number" } else { "" }
+    if t.is_empty() { return "" }
+    if not found.is_empty() and found != t { return "" }
+    found = t
+  }
+  return found
 }
 
 fn not_written(name: Text) -> Text {
@@ -4474,4 +4497,26 @@ test "a function whose signature cannot be read goes the old way" {
   asked = std_asked({text: "add a function slug(text) to kosika/std/text.kos that makes a slug"})
   expect not std_signature(asked).ok
   expect not std_fillable("", asked)
+}
+
+// ---------------------------------------------------------------- Number methods with no "giving a" (2026-11-19)
+
+test "a request with no giving-a takes its result type from its examples" {
+  gcd = method_asked({text: "add a Number method gcd(other: Number) that gives the greatest common divisor of the two whole numbers; examples: `12.gcd(18)` is `6`, `7.gcd(5)` is `1`, `(-4).gcd(6)` is `2`"})
+  sig = signature(gcd)
+  expect sig.ok and sig.result == "Number"
+  expect sig.params.length() == 1 and sig.params[0].name == "other" and sig.params[0].type == "Number"
+  expect example_type([{call: "x", value: "true"}, {call: "y", value: "false"}]) == "Bool"
+  expect example_type([{call: "x", value: "\"ab\""}]) == "Text"
+  expect example_type([{call: "x", value: "1"}, {call: "y", value: "true"}]) == ""
+  expect example_type([]) == ""
+}
+
+test "a method written with Any types is registered from the request's signature" {
+  gcd = method_asked({text: "add a Number method gcd(other: Number) that gives the greatest common divisor; examples: `12.gcd(18)` is `6`"})
+  file = "def _gcd(a: Any, b: Any) -> int:\n    return 0\n\n\nMETHODS = (\n    Method(\"Number\", \"abs\", (), \"Number\", f),\n)\n"
+  now = registered(file, gcd)
+  expect now.contains("    Method(\"Number\", \"gcd\", ((\"other\", \"Number\"),), \"Number\", _gcd),\n    Method(\"Number\", \"abs\"")
+  fact = method_asked({text: "add a Number method factorial() that gives 1 times 2 and so on up to the number; examples: `5.factorial()` is `120`"})
+  expect registered("def _factorial(n: Any) -> Any:\n    return 1\n\n\nMETHODS = (\n    Method(\"Number\", \"abs\", (), \"Number\", f),\n)\n", fact).contains("Method(\"Number\", \"factorial\", (), \"Number\", _factorial),")
 }
