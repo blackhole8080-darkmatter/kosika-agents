@@ -3180,9 +3180,13 @@ fn exported_too(text: Text, name: Text) -> Text {
 }
 
 // Runs a std file's tests in both engines: the Python one reads
-// kosika/std, the Go one native/std.
+// kosika/std, the Go one native/std. A std file is tested by its path, so
+// the Go engine reads the edited file from disk and needs no rebuilding:
+// the daily driver builds one engine for the whole swarm and names it in
+// KOSIKA_STD_ENGINE. Without it, `go run` builds the engine here, which can
+// pass the 180-second limit when coders build at once.
 fn both_tests_script() -> Text {
-  return "import os, subprocess, sys\npath = sys.argv[1]\nnative = os.path.join(os.getcwd(), 'native')\npy = subprocess.run([sys.executable, '-m', 'kosika.cli', 'test', os.path.join('kosika', path)], capture_output=True, text=True)\ngo = subprocess.run(['go', '-C', native, 'run', '.', 'test', os.path.join(native, path)], capture_output=True, text=True)\ntail = lambda ran: '\\n'.join((ran.stdout + ran.stderr).strip().splitlines()[-12:])\nprint('Python engine:\\n' + tail(py))\nprint('Go engine:\\n' + tail(go))\nsys.exit(0 if py.returncode == 0 and go.returncode == 0 else 1)\n"
+  return "import os, subprocess, sys\npath = sys.argv[1]\nnative = os.path.join(os.getcwd(), 'native')\npy = subprocess.run([sys.executable, '-m', 'kosika.cli', 'test', os.path.join('kosika', path)], capture_output=True, text=True)\nengine = os.environ.get('KOSIKA_STD_ENGINE', '')\ngo_cmd = [engine, 'test', os.path.join(native, path)] if engine and os.path.isfile(engine) else ['go', '-C', native, 'run', '.', 'test', os.path.join(native, path)]\ngo = subprocess.run(go_cmd, capture_output=True, text=True)\ntail = lambda ran: '\\n'.join((ran.stdout + ran.stderr).strip().splitlines()[-12:])\nprint('Python engine:\\n' + tail(py))\nprint('Go engine:\\n' + tail(go))\nsys.exit(0 if py.returncode == 0 and go.returncode == 0 else 1)\n"
 }
 
 fn std_report(asked: StdAsked, wrote: Result, ran: Ran) -> Result {
@@ -4254,6 +4258,7 @@ test "a function asked for in the standard library goes in both copies, exported
   expect exported_too(file, "fade_in").contains("export [a, b, fade_in]")
   expect exported_too(exported_too(file, "fade_in"), "fade_in") == exported_too(file, "fade_in")
   expect exported_too(file, "nowhere") == file
+  expect both_tests_script().contains("KOSIKA_STD_ENGINE")
   expect both_tests_script().contains("'go', '-C', native, 'run', '.', 'test'")
 }
 
