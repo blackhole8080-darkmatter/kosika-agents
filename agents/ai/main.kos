@@ -493,8 +493,11 @@ fn calc_agreed(w: Work, a: Sum, b: Sum, c: Sum) -> Done {
 }
 
 workflow do_calc(w: Work) -> Done {
-  sum  = use_model counter(job(calc_brief(w))) verify formula_ok(sum.expression) retry 2 otherwise {expression: "", meaning: ""}
-  twin = use_model counter(job(twin_brief(w))) verify formula_ok(twin.expression) retry 1 otherwise {expression: "", meaning: ""}
+  // The two formulas are written side by side: neither reads the other.
+  parallel {
+    sum  = use_model counter(job(calc_brief(w))) verify formula_ok(sum.expression) retry 2 otherwise {expression: "", meaning: ""}
+    twin = use_model counter(job(twin_brief(w))) verify formula_ok(twin.expression) retry 1 otherwise {expression: "", meaning: ""}
+  }
   tie  = match agree(sum, twin) or (not computes(sum.expression) and not computes(twin.expression)) {
     case true { {expression: "", meaning: ""} }
     case _ { call third_formula(w) }
