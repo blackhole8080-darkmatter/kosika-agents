@@ -2,9 +2,10 @@
 
 Give it a PDF, an EPUB, a web book or a text file of 300 to 400 pages. It
 reads every page, A to Z, and writes notes you can learn the book from in a
-fraction of the time: for each chapter a short overview, then one card per
-concept with **what** it is, **how** it is done, **why** it is done, an
-example and the key points, each with the page and the exact words of the
+fraction of the time: the whole book on one page (a summary and its big
+ideas), then for each chapter a short overview and its key takeaways, then
+one card per concept with **what** it is, **how** it is done, **why** it is
+done, an example, a case study when the book has one, and the key points, each with the page and the exact words of the
 book it came from. Each chapter also gets a mind map drawn by Kosika Designs,
 and the book's own figures and tables are listed by page.
 
@@ -37,7 +38,8 @@ Code does every exact job; the models only write.
 | Text out of the book, page by page | `pages.py` | nothing is summarised or dropped |
 | Chapters (the book's own contents, else its headings, else 15 pages each) and pieces of about 5000 characters | Kosika code | every line is in exactly one piece |
 | Ideas from each piece | noter model | each idea's quote is found in the piece word for word; one not found is dropped and counted, and the piece is asked again |
-| Concept cards from each chapter's ideas | writer model | each card names the ideas it uses, four in five ideas must be used, and a card with many words the chapter does not have is marked as drifting |
+| The book on one page | summarizer model | 80 to 200 words and 4 to 10 big ideas, using only words the chapter notes use |
+| Concept cards and takeaways from each chapter's ideas | writer model | each card names the ideas it uses, four in five ideas must be used, and a card with many words the chapter does not have is marked as drifting |
 | Coverage | Kosika code | every chapter has notes, every piece gave ideas (or was contents, an index or references), the chapter's key words are in its notes |
 
 ## The scorecard

@@ -32,6 +32,8 @@ if "The text:\n" in prompt:
         kind = "how" if " by " in s or "step" in s else "why" if "because" in s or " so " in s else "what"
         ideas.append({"kind": kind, "idea": s, "quote": quote})
     print(json.dumps({"ideas": ideas}))
+elif "big_ideas" in prompt:
+    print(json.dumps({"summary": "Stand-in summary. " * 30, "big_ideas": []}))
 else:
     listed = re.findall(r"^(\d+)\. \[[a-z]+, p\. \d+\] (.+)$", prompt, re.M)
     cards = []
@@ -39,6 +41,6 @@ else:
         group = listed[i:i + 3]
         first = group[0][1]
         cards.append({"concept": " ".join(first.split()[:4]).strip(".,:;"), "what": first, "how": "", "why": "",
-                      "example": "", "bullets": [g[1] for g in group[1:]], "from": [int(g[0]) for g in group]})
+                      "example": "", "case_study": "", "bullets": [g[1] for g in group[1:]], "from": [int(g[0]) for g in group]})
     title = re.search(r'chapter "([^"]+)"', prompt)
-    print(json.dumps({"gist": f"Stand-in gist for {title.group(1) if title else 'this chapter'}: the plumbing works.", "cards": cards}))
+    print(json.dumps({"gist": f"Stand-in gist for {title.group(1) if title else 'this chapter'}: the plumbing works.", "takeaways": [g[1] for g in listed[:2]], "cards": cards}))
