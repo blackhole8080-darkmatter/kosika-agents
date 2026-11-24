@@ -370,6 +370,8 @@ fn earlier(done: Done[]) -> Text {
   return clip(out, 2400)
 }
 
+fn work_next(ask: Text, plan: Plan, done: Done[]) -> Work { return work_at(ask, plan, done.length(), done) }
+
 fn work_at(ask: Text, plan: Plan, i: Number, done: Done[]) -> Work {
   let step = if i < plan.steps.length() { plan.steps[i] } else { blank_step() }
   return {ask: ask, goal: plan.goal, n: i + 1, step: step, before: earlier(done)}
@@ -1210,50 +1212,26 @@ workflow ai_solve(ask: Ask) -> Report {
   hint  = lesson_hint(past, ask.text)
   draft = use_model planner(job({task: plan_task(kind, most), ask: ask.text, step: "", before: plan_before(brain.prompt, hint)})) verify plan_fit(draft, most, kind) retry 2 otherwise fallback_plan(ask.text, kind)
   plan  = kosika_first(draft)
-  w1    = work_at(ask.text, plan, 0, [])
-  d1    = match tool_at(plan, 0) {
-    case "calc" { call do_calc(w1) }
-    case "code" { call do_code(w1) }
-    case "think" { call do_think(w1) }
-    case "look" { call do_look(w1) }
-    case "draw" { do_draw(w1) }
-    case _ { skip(w1) }
+  // One step for each step of the plan, at most four; each is shown the
+  // steps done before it.
+  done  = for s in plan.steps limit 4 {
+    match s.tool {
+      case "calc" { call do_calc(work_next(ask.text, plan, done)) }
+      case "code" { call do_code(work_next(ask.text, plan, done)) }
+      case "think" { call do_think(work_next(ask.text, plan, done)) }
+      case "look" { call do_look(work_next(ask.text, plan, done)) }
+      case "draw" { do_draw(work_next(ask.text, plan, done)) }
+      case _ { skip(work_next(ask.text, plan, done)) }
+    }
   }
-  w2    = work_at(ask.text, plan, 1, [d1])
-  d2    = match tool_at(plan, 1) {
-    case "calc" { call do_calc(w2) }
-    case "code" { call do_code(w2) }
-    case "think" { call do_think(w2) }
-    case "look" { call do_look(w2) }
-    case "draw" { do_draw(w2) }
-    case _ { skip(w2) }
-  }
-  w3    = work_at(ask.text, plan, 2, [d1, d2])
-  d3    = match tool_at(plan, 2) {
-    case "calc" { call do_calc(w3) }
-    case "code" { call do_code(w3) }
-    case "think" { call do_think(w3) }
-    case "look" { call do_look(w3) }
-    case "draw" { do_draw(w3) }
-    case _ { skip(w3) }
-  }
-  w4    = work_at(ask.text, plan, 3, [d1, d2, d3])
-  d4    = match tool_at(plan, 3) {
-    case "calc" { call do_calc(w4) }
-    case "code" { call do_code(w4) }
-    case "think" { call do_think(w4) }
-    case "look" { call do_look(w4) }
-    case "draw" { do_draw(w4) }
-    case _ { skip(w4) }
-  }
-  missed = first_failed([d1, d2, d3, d4])
-  d5    = match missed.ran {
-    case true { call redo({ask: ask.text, goal: plan.goal, failed: missed, before: earlier([d1, d2, d3, d4])}) }
+  missed = first_failed(done)
+  again = match missed.ran {
+    case true { call redo({ask: ask.text, goal: plan.goal, failed: missed, before: earlier(done)}) }
     case _ { skip(work_at(ask.text, plan, 4, [])) }
   }
-  done  = [d1, d2, d3, d4, d5]
-  reply = use_model writer(job(reply_brief(ask.text, plan, done))) verify reply_ok(reply, done) retry 1 otherwise {text: plain_reply(done)}
-  made  = report_of(ask, kind, plan, done, reply.text)
+  all   = done.append(again)
+  reply = use_model writer(job(reply_brief(ask.text, plan, all))) verify reply_ok(reply, all) retry 1 otherwise {text: plain_reply(all)}
+  made  = report_of(ask, kind, plan, all, reply.text)
   kept  = remember lesson_of(made, plan) in lessons under lesson_key(ask.text)
   noted = call brain_record(brain_done(ask, made))
   report = {..made, note: made.note + learned_note(hint)}
