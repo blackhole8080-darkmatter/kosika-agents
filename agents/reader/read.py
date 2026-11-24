@@ -212,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{'PASSED' if s['passed'] else 'NOT PASSED'}: {s['chapters_with_notes']}/{s['chapters']} chapters, "
           f"{s['pieces_read']}/{s['pieces']} pieces, {s['ideas']} ideas ({s['ideas_dropped']} dropped), "
           f"{s['cards']} cards ({s['cards_drifting']} drifting), key words {s['terms_covered']}/{s['terms']}, "
-          f"{s['words_in']} → {s['words_out']} words, {run['model_calls']} model calls, {minutes} min")
+          f"{s['words_in']} -> {s['words_out']} words, {run['model_calls']} model calls, {minutes} min")
     print(f"Notes: {out / 'notes.html'}")
     return 0
 
