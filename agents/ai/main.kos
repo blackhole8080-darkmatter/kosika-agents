@@ -17,9 +17,11 @@
 //   code   the model writes a small Kosika program with its own tests;
 //          the engine checks it and runs the tests, and the model is shown
 //          what failed and asked once to fix it
-//   think  the model answers in words; a second model must quote where
-//          the answer does what the step asked, and a quote that is not
-//          in the answer is refused
+//   think  the parts a whole answer needs are listed first, from the ask
+//          alone; the model answers in words; a second model must quote,
+//          for every part, where the answer gives it, and Kosika finds
+//          each quote in the answer; a day-by-day schedule or "in two
+//          sentences" is checked by Kosika with no model
 //   look   Kosika reads a Wikipedia page (only with --allow-site
 //          en.wikipedia.org); the model answers from it and must quote the
 //          page, and every quote is found on the page word for word
@@ -65,7 +67,12 @@ record Said { text: Text }
 record Fix { ask: Text step: Text text: Text tests: Text problems: Text[] }
 record Tried { text: Text problems: Text[] }
 record Thought { text: Text ok: Bool reason: Text tries: Number }
-record Again { w: Work first: Text reason: Text }
+record Again { w: Work parts: Text[] first: Text reason: Text }
+// The parts a whole answer needs, and what a reader quoted for each.
+record Parts { parts: Text[] }
+record Quotes { quotes: Text[] }
+record Decision { answer: Bool confidence: Number reason: Text }
+record Cover { w: Work parts: Text[] text: Text }
 record Redo { ask: Text goal: Text failed: Done before: Text }
 record Done { n: Number tool: Text what: Text answer: Text check: Text ok: Bool ran: Bool }
 record Report { ask: Text kind: Text goal: Text planned_by: Text steps: Done[] answer: Text passed: Number failed: Number note: Text pictures: Text[] }
@@ -152,7 +159,19 @@ model writer {
   parameters: { max_output_tokens: 1200 }
 }
 
-model reviewer
+// Lists, from the ask alone, the parts a whole answer must have.
+model parter {
+  input: Job
+  output: Parts
+  parameters: { max_output_tokens: 300 }
+}
+
+// Copies, for each part, the words of an answer that give it.
+model coverer {
+  input: Job
+  output: Quotes
+  parameters: { max_output_tokens: 900 }
+}
 
 // Kosika's own reading of a program: it does not check, or a test fails.
 // It reaches nothing, so it needs no approval.
@@ -938,10 +957,115 @@ fn do_draw(w: Work) -> Done {
           check: "drawn by Kosika Designs from the formula; every point was computed, none guessed", ok: true, ran: true}
 }
 
-// ---------------------------------------------------------------- think: answered in words, read by a second model
+// ---------------------------------------------------------------- think: answered in words, checked part by part
 
-fn think_brief(w: Work) -> Brief {
-  return {task: "Do this one step of the ask well and briefly, in plain words; use the results of earlier steps where they help, and do not redo them. If you are not sure of a fact, say so rather than guess. Answer with the text alone.",
+// A think step is checked strictly (2026-11-24). A model that reads an
+// answer and says yes is too easily pleased: it passed an explanation of
+// induction with no base case. So the parts a whole answer needs are
+// listed first, from the ask alone, before any answer exists; the thinker
+// is told them; and a second model must copy, for each part, the words of
+// the answer that give it. Kosika finds every quote in the answer word for
+// word, and the step passes only when every part is quoted. What the ask
+// itself makes certain (a day-by-day schedule, an answer in two sentences)
+// Kosika checks with no model at all.
+
+fn parts_brief(w: Work) -> Brief {
+  return {task: "Before anyone answers this step, list the parts a whole, correct answer to it must contain: 2 to 4 short phrases. For a method or a proof, each of its stages; for a plan, how it is laid out and its main topics; for an explanation, the cause and how it works. Name only what the ask and the step make certain. Answer as JSON: {\"parts\": [\"...\"]}",
+          ask: w.ask, step: w.step.what + " (done when: " + w.step.done_when + ")", before: ""}
+}
+
+fn parts_ok(p: Parts) -> Text {
+  if p.parts.length() < 1 or p.parts.length() > 4 { return "give 1 to 4 parts" }
+  for x in p.parts {
+    if x.trim().is_empty() or x.length() > 120 { return "each part is a short phrase" }
+  }
+  return ""
+}
+
+// The parts, or the step's own done_when when no list could be had.
+fn parts_or(p: Parts, w: Work) -> Text[] {
+  if parts_ok(p).is_empty() { return p.parts }
+  if not w.step.done_when.trim().is_empty() { return [w.step.done_when] }
+  return [w.step.what]
+}
+
+workflow parts_of(w: Work) -> Parts {
+  listed = use_model parter(job(parts_brief(w))) verify parts_ok(listed) retry 1 otherwise {parts: []}
+  out    = {parts: parts_or(listed, w)}
+}
+
+fn numbered(parts: Text[]) -> Text {
+  var out = ""
+  var i = 1
+  for x in parts {
+    out = out + i.to_text() + ". " + x + "\n"
+    i = i + 1
+  }
+  return out
+}
+
+// ------------------------------------------- what the ask itself makes certain
+
+fn sentences_wanted(ask: Text) -> Number {
+  let low = ask.lower()
+  if has_any(low, ["in a sentence", "in one sentence", "in 1 sentence"]) { return 1 }
+  let names = ["two", "three", "four", "five"]
+  var n = 2
+  for name in names {
+    if low.contains("in " + name + " sentences") or low.contains("in " + n.to_text() + " sentences") { return n }
+    n = n + 1
+  }
+  return 0
+}
+
+fn sentence_count(text: Text) -> Number {
+  let t = text.trim().replace("\n", " ").replace("! ", ". ").replace("? ", ". ")
+  var n = 0
+  for s in t.split(". ") {
+    if s.trim().length() > 1 { n = n + 1 }
+  }
+  return n
+}
+
+fn days_wanted(ask: Text) -> Bool {
+  let low = ask.lower()
+  if has_any(low, ["daily", "day by day", "day-by-day", "each day", "every day"]) { return true }
+  return low.contains("schedule") and has_any(low, ["week", " days", "-day"])
+}
+
+// How many days the answer lays out by name.
+fn days_named(text: Text) -> Number {
+  let low = text.lower()
+  let labels = ["day 1", "day 2", "day 3", "day 4", "day 5", "day 6", "day 7",
+                "day one", "day two", "day three", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+  var n = 0
+  for l in labels {
+    if low.contains(l) { n = n + 1 }
+  }
+  return n
+}
+
+// What the ask makes certain, told to the thinker.
+fn shape_rules(ask: Text) -> Text {
+  var out = ""
+  let n = sentences_wanted(ask)
+  if n > 0 { out = out + " Use at most " + n.to_text() + " sentences." }
+  if days_wanted(ask) { out = out + " Lay it out day by day, each day on its own line starting Day 1:, Day 2:, and so on." }
+  return out
+}
+
+// What the answer gets wrong of what the ask makes certain; "" when nothing.
+fn shape_problem(ask: Text, text: Text) -> Text {
+  let n = sentences_wanted(ask)
+  if n > 0 and sentence_count(text) > n { return "the ask wants at most " + n.to_text() + " sentences, and the answer has " + sentence_count(text).to_text() }
+  if days_wanted(ask) and days_named(text) < 2 { return "the ask wants a schedule laid out day by day, and the answer names no days (Day 1, Day 2, ...)" }
+  return ""
+}
+
+// ------------------------------------------- the answer, and its check
+
+fn think_brief(w: Work, parts: Text[]) -> Brief {
+  return {task: "Do this one step of the ask well and briefly, in plain words; use the results of earlier steps where they help, and do not redo them. A whole answer covers each of these parts, plainly:\n" + numbered(parts) + "If you are not sure of a fact, say so rather than guess." + shape_rules(w.ask) + " Answer with the text alone.",
           ask: w.ask, step: w.step.what, before: w.before}
 }
 
@@ -966,32 +1090,79 @@ fn said_ok(text: Text) -> Text {
   return junk(text)
 }
 
-fn review_question(w: Work) -> Text {
-  return f"Does this answer do what was asked ({w.step.what}), so that: {w.step.done_when}?"
-}
-
-workflow review(w: Work) -> Decision {
-  judged = decide review_question(w) given w.before with evidence using reviewer retry 1 otherwise {answer: false, confidence: 0, reason: "no reviewer gave a reading that quotes the answer"}
-}
 
 fn usable(text: Text) -> Bool { return not text.trim().is_empty() and junk(text).is_empty() }
+
+// Text as a quote is compared: flat, with curly quotes made straight.
+fn straight(t: Text) -> Text {
+  return flat(t.replace("’", "'").replace("‘", "'").replace("“", "\"").replace("”", "\""))
+}
+
+fn quoted_in(quote: Text, text: Text) -> Bool {
+  let q = straight(quote)
+  return q.length() >= 3 and straight(text).contains(q)
+}
+
+fn cover_brief(c: Cover) -> Brief {
+  return {task: "Read the answer below. For each part a whole answer needs, in the same order, copy word for word the words of the answer that give that part. Give an empty text \"\" for a part the answer leaves out, or only names without giving it. Never quote the list of parts; quote only the answer. Answer as JSON: {\"quotes\": [\"...\"]}, one quote for each part.",
+          ask: c.w.ask, step: c.w.step.what,
+          before: "The parts a whole answer needs:\n" + numbered(c.parts) + "\nThe answer:\n" + c.text}
+}
+
+fn cover_ok(q: Quotes, c: Cover) -> Text {
+  if q.quotes.length() != c.parts.length() { return "give exactly " + c.parts.length().to_text() + " quotes, one for each part, \"\" where the answer lacks it" }
+  var i = 1
+  for x in q.quotes {
+    if not x.trim().is_empty() and not quoted_in(x, c.text) { return "quote " + i.to_text() + " is not in the answer word for word; copy the answer's own words, or give \"\"" }
+    i = i + 1
+  }
+  return ""
+}
+
+// The parts no quote was found for.
+fn missing_parts(q: Quotes, c: Cover) -> Text[] {
+  var out: Text[] = []
+  var i = 0
+  for p in c.parts {
+    let quote = if i < q.quotes.length() { q.quotes[i] } else { "" }
+    if quote.trim().is_empty() or not quoted_in(quote, c.text) { out = out.append(p) }
+    i = i + 1
+  }
+  return out
+}
+
+fn verdict(q: Quotes, c: Cover) -> Decision {
+  let shape = shape_problem(c.w.ask, c.text)
+  let missing = missing_parts(q, c)
+  if not missing.is_empty() {
+    return {answer: false, confidence: 1, reason: "the answer leaves out: " + missing.join("; ")}
+  }
+  if not shape.is_empty() { return {answer: false, confidence: 1, reason: shape} }
+  return {answer: true, confidence: 1, reason: "every part was quoted from the answer: " + c.parts.join("; ")}
+}
+
+workflow review(c: Cover) -> Decision {
+  quotes = use_model coverer(job(cover_brief(c))) verify cover_ok(quotes, c) retry 1 otherwise {quotes: []}
+  judged = verdict(quotes, c)
+}
 
 fn thought_of(said: Said, judged: Decision, tries: Number) -> Thought {
   return {text: said.text, ok: usable(said.text) and judged.answer, reason: judged.reason, tries: tries}
 }
 
-// The answer again, with what the reader found missing.
+fn unread(why: Text) -> Decision { return {answer: false, confidence: 0, reason: why} }
+
+// The answer again, with what the check found missing.
 fn again_brief(a: Again) -> Brief {
-  return {task: "Do this one step of the ask again, better, in plain words. A careful reader found this wrong with the first answer: " + clip(a.reason, 300) + "\nThe first answer was:\n" + clip(a.first, 1500) + "\nGive a whole new answer that fixes it. If you are not sure of a fact, say so. Answer with the text alone.",
+  return {task: "Do this one step of the ask again, better, in plain words. Kosika's check found this wrong with the first answer: " + clip(a.reason, 300) + "\nA whole answer covers each of these parts, plainly:\n" + numbered(a.parts) + "The first answer was:\n" + clip(a.first, 1500) + "\nGive a whole new answer that fixes it. If you are not sure of a fact, say so." + shape_rules(a.w.ask) + " Answer with the text alone.",
           ask: a.w.ask, step: a.w.step.what, before: a.w.before}
 }
 
 workflow think_again(a: Again) -> Thought {
   said   = use_model thinker(job(again_brief(a))) verify said_ok(said.text) retry 1 otherwise {text: ""}
-  shown  = {..a.w, before: said.text}
   judged = match usable(said.text) {
-    case true { call review(shown) }
-    case _ { {answer: false, confidence: 0, reason: "there was no second answer"} }
+    case true { call review({w: a.w, parts: a.parts, text: said.text}) }
+    case _ { unread("there was no second answer") }
   }
   thought = thought_of(said, judged, 2)
 }
@@ -1002,30 +1173,31 @@ fn better(first: Thought, again: Thought) -> Thought {
   return first
 }
 
-fn think_done(w: Work, t: Thought) -> Done {
+fn think_done(w: Work, parts: Text[], t: Thought) -> Done {
   if not usable(t.text) {
     return {n: w.n, tool: "think", what: w.step.what, answer: "No answer was given.", check: "nothing to check", ok: false, ran: true}
   }
   let tried = if t.tries > 1 { " on the second try, after the first was sent back" } else { "" }
-  let check = if t.ok { "a second model read it and quoted where it does what was asked" + tried } else { "a second model did not find that it does what was asked: " + clip(t.reason, 200) }
+  let check = if t.ok { "checked part by part: a second model quoted where the answer gives each of the " + parts.length().to_text() + " parts it needs (" + clip(parts.join("; "), 200) + "), and Kosika found every quote in the answer" + tried }
+              else { "not checked: " + clip(t.reason, 240) }
   return {n: w.n, tool: "think", what: w.step.what, answer: t.text, check: check, ok: t.ok, ran: true}
 }
 
 workflow do_think(w0: Work) -> Done {
   near   = recall facts like w0.step.what
   w      = with_facts(w0, near)
-  said   = use_model thinker(job(think_brief(w))) verify said_ok(said.text) retry 1 otherwise {text: ""}
-  shown  = {..w, before: said.text}
+  parts  = call parts_of(w)
+  said   = use_model thinker(job(think_brief(w, parts.parts))) verify said_ok(said.text) retry 1 otherwise {text: ""}
   judged = match usable(said.text) {
-    case true { call review(shown) }
-    case _ { {answer: false, confidence: 0, reason: "there was no answer"} }
+    case true { call review({w: w, parts: parts.parts, text: said.text}) }
+    case _ { unread("there was no answer") }
   }
   first  = thought_of(said, judged, 1)
   best   = match usable(said.text) and not judged.answer {
-    case true { call think_again({w: w, first: said.text, reason: judged.reason}) }
+    case true { call think_again({w: w, parts: parts.parts, first: said.text, reason: judged.reason}) }
     case _ { first }
   }
-  done   = think_done(w, better(first, best))
+  done   = think_done(w, parts.parts, better(first, best))
 }
 
 // ---------------------------------------------------------------- one new try at a step that failed
@@ -1324,7 +1496,8 @@ test "a sum is computed by Kosika, never taken from the model" {
       {tool: "think", what: "say whether that number is more than 400", done_when: "it says yes or no"}]}]
   answers counter: [{expression: "0.18*2450", meaning: "18% of 2450"}]
   answers thinker: [{text: "Yes: 441 is more than 400, by 41."}]
-  answers reviewer: [{answer: true, confidence: 0.9, reason: "it says yes", evidence: ["441 is more than 400"]}]
+  answers parter: [{parts: ["whether the number is more than 400"]}]
+  answers coverer: [{quotes: ["441 is more than 400"]}]
   answers writer: [{text: "18% of 2450 is 441, so yes, it is more than 400 (by 41)."}]
   r = main({text: "What is 18% of 2450, and is it more than 400?", most: 3})
   expect r.kind == "maths"
@@ -1348,7 +1521,8 @@ test "a wrong number in the reply is refused, and Kosika writes it instead" {
 test "a plan that never passes is replaced by Kosika's own" {
   answers planner: [{goal: "", steps: []}, {goal: "", steps: []}, {goal: "x", steps: []}]
   answers thinker: [{text: "Light scatters off air; blue scatters most."}]
-  answers reviewer: [{answer: true, confidence: 0.8, reason: "explains it", evidence: ["blue scatters most"]}]
+  answers parter: [{parts: ["why blue is seen"]}]
+  answers coverer: [{quotes: ["blue scatters most"]}]
   answers writer: [{text: "Light scatters off air; blue scatters most."}]
   r = main({text: "Why is the sky blue?", most: 3})
   expect r.planned_by.starts_with("Kosika")
@@ -1356,15 +1530,16 @@ test "a plan that never passes is replaced by Kosika's own" {
   expect r.steps[0].tool == "think"
 }
 
-test "an answer the reviewer cannot quote stays unchecked, and the report says so" {
+test "an answer the reader cannot quote stays unchecked, and the report says so" {
   answers planner: [{goal: "Explain tides", steps: [{tool: "think", what: "explain what causes tides", done_when: "the moon's pull is named"}]}]
-  answers thinker: [{text: "Tides come from wind."}]
-  answers reviewer: [{answer: true, confidence: 1, reason: "fine", evidence: ["the moon pulls the sea"]}, {answer: false, confidence: 0.9, reason: "it never names the moon", evidence: []}]
+  answers parter: [{parts: ["the moon's pull"]}]
+  answers thinker: [{text: "Tides come from wind."}, {text: "Tides come from wind, mostly."}]
+  answers coverer: [{quotes: ["the moon pulls the sea"]}, {quotes: [""]}, {quotes: [""]}]
   answers writer: [{text: "Tides come from wind (this is unchecked)."}]
   r = main({text: "Why are there tides?", most: 2})
   expect not r.steps[0].ok
-  expect r.steps[0].check.contains("did not find")
-  expect r.failed == 1
+  expect r.steps[0].check.contains("leaves out: the moon's pull")
+  expect r.failed >= 1
 }
 
 test "a program that fails its tests is shown what failed and fixed once" {
@@ -1451,8 +1626,8 @@ test "the tests are written before the code, and the code may not change them" {
 test "an answer sent back is tried again with the reader's reason" {
   answers planner: [{goal: "Explain tides", steps: [{tool: "think", what: "explain what causes tides", done_when: "the moon's pull is named"}]}]
   answers thinker: [{text: "Tides come from wind."}, {text: "Tides come mostly from the moon's pull on the sea."}]
-  answers reviewer: [{answer: false, confidence: 0.9, reason: "it never names the moon", evidence: ["Tides come from wind."]},
-                     {answer: true, confidence: 0.9, reason: "names the moon", evidence: ["the moon's pull on the sea"]}]
+  answers parter: [{parts: ["the moon's pull"]}]
+  answers coverer: [{quotes: [""]}, {quotes: ["the moon's pull on the sea"]}]
   answers writer: [{text: "Tides come mostly from the moon's pull on the sea."}]
   r = main({text: "Why are there tides?", most: 2})
   expect r.steps[0].ok
@@ -1592,7 +1767,8 @@ test "each run is told to the Brain, and the next ask is planned with it in view
                     {goal: "Explain tides", steps: [{tool: "think", what: "explain what causes tides", done_when: "the moon is named"}]}]
   answers counter: [{expression: "0.18*2450", meaning: "18% of 2450"}, {expression: "0.18*2450", meaning: "18% of 2450"}]
   answers thinker: [{text: "Tides come mostly from the moon's pull on the sea."}]
-  answers reviewer: [{answer: true, confidence: 0.9, reason: "names the moon", evidence: ["the moon's pull on the sea"]}]
+  answers parter: [{parts: ["the moon's pull"]}]
+  answers coverer: [{quotes: ["the moon's pull on the sea"]}]
   answers writer: [{text: "It is 441."}, {text: "Tides come mostly from the moon's pull."}]
   first = main({text: "What is 18% of 2450?", most: 2})
   d = brain_done({text: "What is 18% of 2450?", most: 2}, first)
@@ -1706,4 +1882,63 @@ test "the programs the first scorecard's models wrote now check" {
   expect r.steps[0].ok
   expect r.steps[0].answer.contains("if n < 2 { return false }")
   expect not r.steps[0].answer.contains(";")
+}
+
+// ---------------------------------------------------------------- strict think check (2026-11-24)
+
+test "an explanation of induction with no base case is sent back, and passes only once it has one" {
+  answers planner: [{goal: "Explain induction", steps: [{tool: "think", what: "explain proof by induction simply", done_when: "the method is clear"}]}]
+  answers parter: [{parts: ["the base case", "the inductive step from n to n+1"]}]
+  answers thinker: [{text: "Induction proves a rule for every n: assume it holds for n and show it then holds for n+1."},
+                    {text: "First prove the base case, that the rule holds for n = 1. Then assume it holds for n and show it holds for n+1."}]
+  answers coverer: [{quotes: ["", "assume it holds for n and show it then holds for n+1"]},
+                    {quotes: ["prove the base case, that the rule holds for n = 1", "assume it holds for n and show it holds for n+1"]}]
+  answers writer: [{text: "Prove the base case, then the step from n to n+1."}]
+  r = main({text: "Explain proof by induction simply.", most: 2})
+  expect r.steps[0].ok
+  expect r.steps[0].answer.contains("base case")
+  expect r.steps[0].check.contains("second try")
+  expect r.steps[0].check.contains("2 parts")
+}
+
+test "a quote of the parts list, not of the answer, is refused" {
+  c: Cover = {w: {ask: "a", goal: "g", n: 1, step: {tool: "think", what: "s", done_when: "d"}, before: ""}, parts: ["the base case"], text: "Assume it holds for n."}
+  expect cover_ok({quotes: ["the base case"]}, c).contains("not in the answer")
+  expect cover_ok({quotes: []}, c).contains("exactly 1")
+  expect cover_ok({quotes: [""]}, c) == ""
+  expect missing_parts({quotes: [""]}, c) == ["the base case"]
+  expect not verdict({quotes: [""]}, c).answer
+  expect verdict({quotes: ["ASSUME it  holds"]}, c).answer
+}
+
+test "what the ask makes certain is checked by Kosika with no model" {
+  expect sentences_wanted("What is a qubit, in two sentences?") == 2
+  expect sentences_wanted("Why is the sky blue?") == 0
+  expect sentence_count("One. Two! Three?") == 3
+  expect shape_problem("What is a qubit, in two sentences?", "One. Two. Three.").contains("at most 2")
+  expect shape_problem("What is a qubit, in two sentences?", "A qubit is a bit. It can be 0 and 1.") == ""
+  expect days_wanted("Plan how I can learn graph theory in two weeks, with a short daily schedule.")
+  expect days_wanted("Help me build a one-week revision schedule for a discrete maths exam.")
+  expect not days_wanted("Plan the steps to build a small personal website.")
+  expect shape_problem("a short daily schedule", "Learn paths, then trees.").contains("day by day")
+  expect shape_problem("a short daily schedule", "Day 1: paths.\nDay 2: trees.") == ""
+  expect shape_rules("a short daily schedule").contains("Day 1:")
+}
+
+test "a schedule with no days fails even when every part is quoted" {
+  answers planner: [{goal: "Plan", steps: [{tool: "think", what: "plan two weeks of graph theory", done_when: "a plan is given"}]}]
+  answers parter: [{parts: ["the topics"]}]
+  answers thinker: [{text: "Study paths, then trees, then colouring."}, {text: "Study paths and trees, then colouring."}]
+  answers coverer: [{quotes: ["paths, then trees"]}, {quotes: ["paths and trees"]}]
+  answers writer: [{text: "Paths, trees, colouring."}]
+  r = main({text: "Plan how I can learn graph theory in two weeks, with a short daily schedule.", most: 2})
+  expect not r.steps[0].ok
+  expect r.steps[0].check.contains("day by day")
+}
+
+test "with no list of parts, the step's own done_when is the one part" {
+  w: Work = {ask: "a", goal: "g", n: 1, step: {tool: "think", what: "explain tides", done_when: "the moon is named"}, before: ""}
+  expect parts_or({parts: []}, w) == ["the moon is named"]
+  expect parts_or({parts: ["x", "y"]}, w) == ["x", "y"]
+  expect numbered(["x", "y"]) == "1. x\n2. y\n"
 }
