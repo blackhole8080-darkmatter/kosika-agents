@@ -162,5 +162,16 @@ class LearningPlanTests(unittest.TestCase):
             learning_router.kosika_order = saved
 
 
+class HollowTests(unittest.TestCase):
+    def test_blank_json_is_no_answer(self) -> None:
+        for text in ("{}", "[]", '{"name": ""}', '{"a": null, "b": " "}'):
+            self.assertTrue(router.hollow(text), text)
+
+    def test_a_named_empty_list_is_an_answer(self) -> None:
+        # "nothing to learn on this page" is a real answer, not a failure
+        self.assertFalse(router.hollow('{"ideas": []}'))
+        self.assertIsNone(router.Router.problem({}, router.reply_of('{"ideas": []}')))
+
+
 if __name__ == "__main__":
     unittest.main()
