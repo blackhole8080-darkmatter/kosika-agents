@@ -55,26 +55,61 @@ def card(runs: list[dict]) -> str:
   <h3>Median seconds an ask <b>{r['median_seconds']}</b></h3>{bar(r['median_seconds'], most_time, 'var(--time)')}
   <h3>Model calls <b>{r['model_calls']}</b></h3>{bar(r['model_calls'], most_calls, 'var(--calls)')}
   <h3>Overclaims <b>{r['overclaims']}</b></h3>
-  <h3>Pages read from the web <b>{r['web_reads']}</b></h3>
-  <div class="dots">{''.join(dots)}</div>
+    <div class="dots">{''.join(dots)}</div>
 </section>""")
-    return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Kosika AI scorecard</title><style>
-:root{{--bg:#f7f7f8;--card:#fff;--ink:#16161d;--soft:#6b6b78;--line:#e4e4ea;--pass:#1f9d55;--fail:#d64545;--over:#e0a100;--time:#4f46e5;--calls:#0ea5e9}}
-@media (prefers-color-scheme:dark){{:root{{--bg:#0f0f17;--card:#191926;--ink:#ececf4;--soft:#9a9ab0;--line:#2a2a3c}}}}
-body{{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,sans-serif;padding:24px 16px}}
-h1{{font-size:20px;margin:0 0 4px}} .sub{{color:var(--soft);margin:0 0 20px}}
-.runs{{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}}
-.run{{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}}
-h2{{font-size:15px;margin:0;color:var(--soft);font-weight:600}} .score{{font-size:44px;font-weight:700}} .score span{{font-size:20px;color:var(--soft)}}
-.kinds{{color:var(--soft);font-size:13px;margin:0 0 12px}} h3{{font-size:13px;font-weight:500;margin:12px 0 4px;display:flex;justify-content:space-between}}
+    asks = [row["id"] for row in (runs[0].get("rows") or [])]
+    kinds = {row["id"]: row.get("kind", "") for r in runs for row in (r.get("rows") or [])}
+    table = []
+    for ask in asks:
+        cells = []
+        for r in runs:
+            row = next((x for x in r.get("rows") or [] if x["id"] == ask), None)
+            if row is None:
+                cells.append("<td></td>")
+                continue
+            state = "over" if row.get("overclaim") else ("pass" if row.get("passed") else "fail")
+            word = {"pass": "passed", "fail": "failed", "over": "overclaim"}[state]
+            tip = html.escape(row.get("why") or "")
+            cells.append(f'<td title="{tip}"><span class="pill {state}">{word}</span>'
+                         f'<span class="num">{row.get("seconds", 0)} s · {row.get("model_calls", 0)} calls</span></td>')
+        table.append(f'<tr><th scope="row">{html.escape(ask)}<small>{html.escape(kinds.get(ask, ""))}</small></th>{"".join(cells)}</tr>')
+    heads = "".join(f"<th scope=\"col\">{html.escape(str(r['label']))}</th>" for r in runs)
+    return f"""<title>Kosika AI Scorecard</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap">
+<style>
+/* layout: one row of run cards (wrapping), then an ask-by-run table */
+:root{{--bg:#f6f6fb;--card:#ffffff;--ink:#17172b;--soft:#62627a;--line:#e2e2ee;--pass:#16834a;--fail:#c93838;--over:#b07800;--time:#4f46e5;--calls:#d08a00;
+--display:"Space Grotesk",system-ui,sans-serif;--body:Inter,system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,monospace}}
+@media (prefers-color-scheme:dark){{:root:not([data-theme="light"]){{--bg:#0e0e1c;--card:#17172a;--ink:#ececf6;--soft:#9d9db6;--line:#2a2a44;--pass:#3fbf78;--fail:#ef6a6a;--over:#f0b429;--time:#8f88ff;--calls:#f5b638;color-scheme:dark}}}}
+:root[data-theme="dark"]{{--bg:#0e0e1c;--card:#17172a;--ink:#ececf6;--soft:#9d9db6;--line:#2a2a44;--pass:#3fbf78;--fail:#ef6a6a;--over:#f0b429;--time:#8f88ff;--calls:#f5b638;color-scheme:dark}}
+body{{background:var(--bg);color:var(--ink);font:15px/1.5 var(--body);padding-block:28px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}}
+main{{max-width:1080px;margin:0 auto;display:grid;gap:22px}}
+h1{{font:700 26px/1.2 var(--display);margin:0;text-wrap:balance}} .sub{{color:var(--soft);margin:6px 0 0;max-width:70ch}}
+.runs{{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}}
+.run{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;display:grid;gap:6px;min-width:0}}
+h2{{font:600 13px/1.3 var(--body);margin:0;color:var(--soft);letter-spacing:.02em}}
+.score{{font:700 44px/1 var(--display);font-variant-numeric:tabular-nums}} .score span{{font-size:20px;color:var(--soft)}}
+.kinds{{color:var(--soft);font-size:13px;margin:0 0 6px}}
+h3{{font:500 13px/1.3 var(--body);margin:6px 0 0;display:flex;justify-content:space-between}} h3 b{{font-variant-numeric:tabular-nums}}
 .track{{height:8px;background:var(--line);border-radius:4px;overflow:hidden}} .fill{{height:100%;border-radius:4px}}
-.dots{{display:flex;flex-wrap:wrap;gap:5px;margin-top:14px}} .dot{{width:13px;height:13px;border-radius:50%}}
+.dots{{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}} .dot{{width:13px;height:13px;border-radius:50%}}
 .pass{{background:var(--pass)}} .fail{{background:var(--fail)}} .over{{background:var(--over)}}
-</style></head><body><h1>Kosika AI scorecard</h1>
-<p class="sub">20 real asks, judged by code, not by the agent. Dots: green passed, red failed, amber an overclaim. Hover a dot for the ask.</p>
-<div class="runs">{''.join(columns)}</div></body></html>"""
-
+.wrap{{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:12px}}
+table{{border-collapse:collapse;width:100%;min-width:620px;font-size:13px}}
+th,td{{padding:7px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}}
+thead th{{font:600 12px var(--body);color:var(--soft)}} tbody th{{font-weight:600}} th small{{display:block;font-weight:400;color:var(--soft)}}
+.pill{{display:inline-block;padding:1px 8px;border-radius:999px;color:#fff;font-size:12px;margin-right:8px}}
+.num{{font:12px var(--mono);color:var(--soft);font-variant-numeric:tabular-nums}}
+.note{{color:var(--soft);font-size:13px;max-width:75ch;margin:0}}
+</style>
+<main>
+<header><h1>Kosika AI scorecard</h1>
+<p class="sub">The same 20 real asks, judged by code on your laptop with free models, not by the agent itself. An overclaim means the agent said every step passed but the independent check disagreed.</p></header>
+<div class="runs">{''.join(columns)}</div>
+<div class="wrap"><table><thead><tr><th scope="col">Ask</th>{heads}</tr></thead><tbody>{''.join(table)}</tbody></table></div>
+<p class="note">The first and second runs both start with empty memory. The third run reuses what the second one read and checked: an ask whose every step was checked by code is answered again from memory with no model call. Think-only answers are never reused. Times depend on how busy the free models were that day.</p>
+</main>"""
 
 if __name__ == "__main__":
     sys.stdout.write(card([load(p) for p in sys.argv[1:]]))
