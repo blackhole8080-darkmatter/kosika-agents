@@ -589,6 +589,7 @@ fn mend_line(line: Text) -> Text {
   let lead = line.length() - line.trim_start().length()
   let pad = line.slice(0, lead)
   let body = t.trim_start()
+  if body.starts_with("fn ") { return pad + kosika_types(body) }
   if body.starts_with("let mut ") { return pad + "var " + body.slice(8, body.length()) }
   if body.starts_with("elif ") { return pad + "} else if " + body.slice(5, body.length()) }
   // if COND return X  ->  if COND { return X }
@@ -601,6 +602,31 @@ fn mend_line(line: Text) -> Text {
   }
   if body.contains(" && ") and quotes_even(body) { t = t.replace(" && ", " and ") }
   if body.contains(" || ") and quotes_even(body) { t = t.replace(" || ", " or ") }
+  return t
+}
+
+// A function's line written with other languages' type names:
+// List<Number> or Vec<Number> becomes Number[], String Text, Int Number,
+// Boolean Bool (second scorecard, 2026-11-24: List<Number>).
+fn kosika_types(line: Text) -> Text {
+  var t = line
+  for name in ["List<", "Array<", "Vec<", "Sequence<"] {
+    var guard = 0
+    while t.contains(name) and guard < 10 {
+      guard = guard + 1
+      let at = t.index_of(name).or(0)
+      let rest = t.slice(at + name.length(), t.length())
+      let close = rest.index_of(">")
+      if close == null { break }
+      let inner = rest.slice(0, close.or(0)).trim()
+      t = t.slice(0, at) + inner + "[]" + rest.slice(close.or(0) + 1, rest.length())
+    }
+  }
+  for pair in [[": String", ": Text"], [": Integer", ": Number"], [": Int", ": Number"], [": Float", ": Number"], [": Double", ": Number"], [": Boolean", ": Bool"],
+               ["-> String", "-> Text"], ["-> Integer", "-> Number"], ["-> Int", "-> Number"], ["-> Float", "-> Number"], ["-> Double", "-> Number"], ["-> Boolean", "-> Bool"],
+               ["String[]", "Text[]"], ["Int[]", "Number[]"]] {
+    t = t.replace(pair[0], pair[1])
+  }
   return t
 }
 
@@ -1656,6 +1682,10 @@ test "the habits of other languages are mended by rule, with no model" {
   expect mend("  if n < 2 return false") == "  if n < 2 { return false }"
   expect mend("  return Text(n);") == "  return (n).to_text()"
   expect mend("let mut i = 0") == "var i = 0"
+  expect mend("fn max_or_zero(nums: List<Number>) -> Number {") == "fn max_or_zero(nums: Number[]) -> Number {"
+  expect mend("fn shout(s: String, n: Int) -> String {") == "fn shout(s: Text, n: Number) -> Text {"
+  expect mend("fn ok(xs: Vec<String>) -> Boolean {") == "fn ok(xs: Text[]) -> Bool {"
+  expect mend("fn sq(n: Integer) -> Integer {") == "fn sq(n: Number) -> Number {"
   expect mend("if a && b { return 1 }") == "if a and b { return 1 }"
   expect mend("  return \"a;\"") == "  return \"a;\""
   expect mend("  return toText(n)") == "  return toText(n)"
