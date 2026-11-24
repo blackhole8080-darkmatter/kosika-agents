@@ -508,11 +508,11 @@ workflow do_calc(w: Work) -> Done {
 // ---------------------------------------------------------------- code: written by the model, checked by the engine
 
 fn code_task() -> Text {
-  return "Write ONE small, complete Kosika program that does what the step asks. Kosika is its own language, not Python: functions are written fn name(a: Number, b: Text) -> Text { return ... }, types are Text, Number, Bool, Text[] and Number[], lists have .length() and .append(x), loops are for x in list { ... } and while cond { ... }, a changing name is declared var, a fixed one let. It is not Rust or Python: no let mut, no 'single quotes' (text is always in double quotes), write and / or / not instead of && / || / !, and list.contains(x) instead of x in list. End the program with a test block of at least three checks, like:\ntest \"it works\" {\n  expect double(2) == 4\n}\nEvery test block has a name in double quotes. Give only the program, in one ```kosika block."
+  return "Write ONE small, complete Kosika program that does what the step asks. Kosika is its own language, not Python: functions are written fn name(a: Number, b: Text) -> Text { return ... }, types are Text, Number, Bool, Text[] and Number[], lists have .length() and .append(x), loops are for x in list { ... } and while cond { ... }, a changing name is declared var, a fixed one let. It is not Rust or Python: no let mut, no 'single quotes' (text is always in double quotes), write and / or / not instead of && / || / !, and list.contains(x) instead of x in list. Write no semicolons; every if, else and while has braces, even around one line: if n < 2 { return false }; a number becomes text with n.to_text(). End the program with a test block of at least three checks, like:\ntest \"it works\" {\n  expect double(2) == 4\n}\nEvery test block has a name in double quotes. Give only the program, in one ```kosika block."
 }
 
 fn test_task() -> Text {
-  return "Before any code is written, write the tests for it in Kosika. Choose the function's name and types (Text, Number, Bool, Text[], Number[]) and write ONE test block with four to six checks, each on its own line, worked out carefully by hand, including an edge case such as an empty text or list:\ntest \"the ask's own tests\" {\n  expect count_vowels(\"banana\") == 3\n  expect count_vowels(\"\") == 0\n}\nGive only the test block, in one ```kosika block."
+  return "Before any code is written, write the tests for it in Kosika. Choose the function's name and types (Text, Number, Bool, Text[], Number[]) and write ONE test block with four to six checks, each on its own line, worked out carefully by hand. Test only what the ask itself makes certain: ordinary inputs first, and an edge case (an empty text or list, zero, a negative number, extra spaces) only when the ask says what it gives, since a test of a guessed answer fails a right program:\ntest \"the ask's own tests\" {\n  expect count_vowels(\"banana\") == 3\n  expect count_vowels(\"\") == 0\n}\nGive only the test block, in one ```kosika block."
 }
 
 fn test_brief(w: Work) -> Brief {
@@ -529,15 +529,125 @@ fn tests_shape(text: Text) -> Text {
 
 fn code_brief(w: Work, tests: Text) -> Brief {
   if tests.is_empty() { return {task: code_task(), ask: w.ask, step: w.step.what, before: w.before} }
-  return {task: "Write ONE small Kosika program that passes these tests, which will be run against it unchanged:\n" + tests + "\n\nUse exactly the function names and types the tests use, and write only the functions, no test block. Kosika is its own language, not Python: fn name(a: Number, b: Text) -> Text { return ... }, lists have .length() and .append(x), text has .lower(), .chars(), .split(\" \") and .contains(x), loops are for x in list { ... } and while cond { ... }, a changing name is declared var, a fixed one let. It is not Rust or Python: no let mut, no 'single quotes' (text is always in double quotes), write and / or / not instead of && / || / !, and list.contains(x) instead of x in list. Give only the program, in one ```kosika block.",
+  return {task: "Write ONE small Kosika program that passes these tests, which will be run against it unchanged:\n" + tests + "\n\nUse exactly the function names and types the tests use, and write only the functions, no test block. Kosika is its own language, not Python: fn name(a: Number, b: Text) -> Text { return ... }, lists have .length() and .append(x), text has .lower(), .chars(), .split(\" \") and .contains(x), loops are for x in list { ... } and while cond { ... }, a changing name is declared var, a fixed one let. It is not Rust or Python: no let mut, no 'single quotes' (text is always in double quotes), write and / or / not instead of && / || / !, and list.contains(x) instead of x in list. Write no semicolons; every if, else and while has braces, even around one line: if n < 2 { return false }; a number becomes text with n.to_text(). Give only the program, in one ```kosika block.",
           ask: w.ask, step: w.step.what, before: w.before}
 }
 
 // The program the engine checks: the model's functions and the tests
-// written before them, which the model may not change.
+// written before them, which the model may not change. Any test block the
+// model wrote itself is left out, so the held tests are the only ones.
 fn with_tests(code: Text, tests: Text) -> Text {
-  if tests.is_empty() { return unescaped(code) }
-  return unescaped(code).trim() + "\n\n" + unescaped(tests).trim() + "\n"
+  if tests.is_empty() { return mend(unescaped(code)) }
+  return without_tests(mend(unescaped(code))).trim() + "\n\n" + unescaped(tests).trim() + "\n"
+}
+
+// ---------------------------------------------------------------- mending: Kosika fixes other languages' habits itself
+
+// Small models write Kosika with the habits of the languages they know
+// best. These are fixed by rule, with no model, before the engine checks
+// the program (first scorecard, 2026-11-24: semicolons, if without
+// braces, Text(n)). A fix never changes what a line means.
+fn mend(code: Text) -> Text {
+  var out: Text[] = []
+  for line in code.lines() {
+    out = out.append(mend_line(line))
+  }
+  return to_text_calls(last_else_returns(out).join("\n"))
+}
+
+// A function must end with a return in Kosika. One that ends
+// "} else { return X } }" ends instead "} return X }": the same when every
+// branch before it returns, and the engine's tests judge it either way.
+fn last_else_returns(lines: Text[]) -> Text[] {
+  var out: Text[] = []
+  let n = lines.length()
+  var i = 0
+  while i < n {
+    let ends_fn = i + 3 < n and lines[i + 3] == "}"
+    if ends_fn and lines[i].trim() == "} else {" and lines[i + 1].trim().starts_with("return ") and lines[i + 2].trim() == "}" {
+      let pad = lines[i].slice(0, lines[i].length() - lines[i].trim_start().length())
+      out = out.append(pad + "}")
+      out = out.append(pad + lines[i + 1].trim())
+      out = out.append("}")
+      i = i + 4
+    } else {
+      out = out.append(lines[i])
+      i = i + 1
+    }
+  }
+  return out
+}
+
+fn quotes_even(t: Text) -> Bool { return (t.split("\"").length() - 1) % 2 == 0 }
+
+fn mend_line(line: Text) -> Text {
+  var t = line.trim_end()
+  // a statement ended with ; (outside text)
+  while t.ends_with(";") and quotes_even(t) { t = t.slice(0, t.length() - 1).trim_end() }
+  let lead = line.length() - line.trim_start().length()
+  let pad = line.slice(0, lead)
+  let body = t.trim_start()
+  if body.starts_with("let mut ") { return pad + "var " + body.slice(8, body.length()) }
+  if body.starts_with("elif ") { return pad + "} else if " + body.slice(5, body.length()) }
+  // if COND return X  ->  if COND { return X }
+  if body.starts_with("if ") and not body.contains("{") and quotes_even(body) {
+    let at = body.index_of(" return ")
+    if at != null {
+      let cut = at.or(0)
+      return pad + body.slice(0, cut) + " {" + body.slice(cut, body.length()) + " }"
+    }
+  }
+  if body.contains(" && ") and quotes_even(body) { t = t.replace(" && ", " and ") }
+  if body.contains(" || ") and quotes_even(body) { t = t.replace(" || ", " or ") }
+  return t
+}
+
+// Text(x), String(x) and str(x) become (x).to_text().
+fn to_text_calls(code: Text) -> Text {
+  var t = code
+  for name in ["Text(", "String(", "str("] {
+    var guard = 0
+    while guard < 50 {
+      guard = guard + 1
+      let at = t.index_of(name)
+      if at == null { break }
+      let start = at.or(0)
+      // only a call standing alone, not part of a longer name such as toText(
+      if start > 0 and "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.".contains(t.slice(start - 1, start)) { break }
+      let open = start + name.length()
+      var depth = 1
+      var i = open
+      while i < t.length() and depth > 0 {
+        let c = t.slice(i, i + 1)
+        if c == "(" { depth = depth + 1 }
+        if c == ")" { depth = depth - 1 }
+        i = i + 1
+      }
+      if depth != 0 { break }
+      t = t.slice(0, start) + "(" + t.slice(open, i - 1) + ").to_text()" + t.slice(i, t.length())
+    }
+  }
+  return t
+}
+
+// The program without any test block of its own.
+fn without_tests(code: Text) -> Text {
+  var out: Text[] = []
+  var depth = 0
+  var inside = false
+  for line in code.lines() {
+    if not inside and line.trim_start().starts_with("test \"") {
+      inside = true
+      depth = 0
+    }
+    if inside {
+      depth = depth + line.split("{").length() - line.split("}").length()
+      if depth <= 0 and line.contains("}") { inside = false }
+    } else {
+      out = out.append(line)
+    }
+  }
+  return out.join("\n")
 }
 
 // Some models write a program as if for a web page, -> as -&gt;; it is put back.
@@ -1561,4 +1671,31 @@ test "a step is shown the facts Kosika checked before" {
   shown = with_facts(w, near)
   expect shown.before.contains("The Moon's gravity causes tides.")
   expect not shown.before.contains("Cats purr")
+}
+// ---------------------------------------------------------------- mending other languages' habits (2026-11-24)
+test "the habits of other languages are mended by rule, with no model" {
+  expect mend("  var a = (n % 3 == 0);") == "  var a = (n % 3 == 0)"
+  expect mend("  if n < 2 return false") == "  if n < 2 { return false }"
+  expect mend("  return Text(n);") == "  return (n).to_text()"
+  expect mend("let mut i = 0") == "var i = 0"
+  expect mend("if a && b { return 1 }") == "if a and b { return 1 }"
+  expect mend("  return \"a;\"") == "  return \"a;\""
+  expect mend("  return toText(n)") == "  return toText(n)"
+  expect mend("fn f(n: Number) -> Text {\n  if n > 1 {\n    return \"a\"\n  } else {\n    return \"b\"\n  }\n}") == "fn f(n: Number) -> Text {\n  if n > 1 {\n    return \"a\"\n  }\n  return \"b\"\n}"
+}
+test "a test block the coder wrote is left out; only the held tests are run" {
+  expect without_tests("fn f() -> Number {\n  return 1\n}\ntest \"mine\" {\n  expect f() == 2\n}").trim() == "fn f() -> Number {\n  return 1\n}"
+  expect not with_tests("fn f() -> Number {\n  return 1\n}\ntest \"mine\" {\n  expect f() == 2\n}", "test \"held\" {\n  expect f() == 1\n  expect f() > 0\n}").contains("mine")
+  expect with_tests("fn f() -> Number {\n  return 1\n}", "test \"held\" {\n  expect f() == 1\n  expect f() > 0\n}").contains("held")
+}
+test "the programs the first scorecard's models wrote now check" {
+  answers planner: [{goal: "isPrime", steps: [{tool: "code", what: "write isPrime(n)", done_when: "its tests pass"}]}]
+  answers tester: [{text: "test \"prime\" {\n  expect isPrime(2) == true\n  expect isPrime(4) == false\n  expect isPrime(17) == true\n  expect isPrime(1) == false\n}"}]
+  answers coder: [{text: "fn isPrime(n: Number) -> Bool {\n  if n < 2 return false;\n  if n == 2 return true;\n  if n % 2 == 0 return false;\n  var i = 3;\n  while i * i <= n {\n    if n % i == 0 return false;\n    i = i + 2;\n  }\n  return true;\n}\n\ntest \"prime\" {\n  expect isPrime(2) == true;\n}"}]
+  answers code_check: [{problems: []}]
+  answers writer: [{text: "isPrime passes its tests."}]
+  r = main({text: "Write a function in Kosika that says whether a number is prime.", most: 2})
+  expect r.steps[0].ok
+  expect r.steps[0].answer.contains("if n < 2 { return false }")
+  expect not r.steps[0].answer.contains(";")
 }
