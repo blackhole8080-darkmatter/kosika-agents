@@ -55,19 +55,24 @@ record Idea { kind: Text idea: Text quote: Text page: Number }
 record Read { piece: Number chapter: Number first: Number last: Number ideas: Idea[] dropped: Number empty_ok: Bool }
 
 // from: the numbers of the ideas a card is built from, as the writer was shown them.
-record Card { concept: Text what: Text how: Text why: Text example: Text bullets: Text[] from: Number[] }
-record Cards { gist: Text cards: Card[] }
+// case_study: a case study or real story from the book that shows the concept at work.
+record Card { concept: Text what: Text how: Text why: Text example: Text case_study: Text bullets: Text[] from: Number[] }
+// takeaways: the few points of the chapter most worth remembering.
+record Cards { gist: Text takeaways: Text[] cards: Card[] }
 // A chapter, or a part of a long one, for the writer: at most 40 ideas.
 record Section { chapter: Number part: Number title: Text first: Number last: Number book: Text ideas: Idea[] text: Text }
 // count: how many ideas the section had, so a chapter of several sections
 // can number its cards' ideas as one list.
-record Wrote { chapter: Number part: Number count: Number gist: Text cards: Card[] drifting: Text[] by_kosika: Bool }
+record Wrote { chapter: Number part: Number count: Number gist: Text takeaways: Text[] cards: Card[] drifting: Text[] by_kosika: Bool }
 
 record BookFigure { page: Number text: Text }
-record ChapterNotes { n: Number title: Text first: Number last: Number gist: Text cards: Card[] ideas: Idea[] figures: BookFigure[] terms: Text[] missing: Text[] drifting: Text[] map: Text skip: Bool }
+record ChapterNotes { n: Number title: Text first: Number last: Number gist: Text takeaways: Text[] cards: Card[] ideas: Idea[] figures: BookFigure[] terms: Text[] missing: Text[] drifting: Text[] map: Text skip: Bool }
 
 record Score { pages: Number pages_skipped: Number chapters: Number chapters_with_notes: Number pieces: Number pieces_read: Number ideas: Number ideas_dropped: Number cards: Number cards_drifting: Number cards_by_kosika: Number terms: Number terms_covered: Number figures: Number words_in: Number words_out: Number passed: Bool why: Text[] }
-record Notes { title: Text source: Text markdown: Text chapters: ChapterNotes[] score: Score }
+// The whole book on one page: what it is about, and its big ideas.
+record Overview { summary: Text big_ideas: Text[] }
+record OverviewAsk { book: Text notes: Text }
+record Notes { title: Text source: Text markdown: Text overview: Overview chapters: ChapterNotes[] score: Score }
 
 // What any agent can recall later about what was read.
 record Learned { book: Text chapter: Text page: Number kind: Text idea: Text quote: Text }
@@ -84,7 +89,13 @@ model noter {
 model writer {
   input: Job
   output: Cards
-  parameters: { max_output_tokens: 3000 }
+  parameters: { max_output_tokens: 3500 }
+}
+
+model summarizer {
+  input: Job
+  output: Overview
+  parameters: { max_output_tokens: 1500 }
 }
 
 // ---------------------------------------------------------------- small tools
@@ -289,10 +300,10 @@ fn lines_of_pages(book: Book, c: Chapter) -> Line[] {
 
 // ---------------------------------------------------------------- 2. reading a piece
 
-fn kinds() -> Text[] { return ["term", "what", "how", "why", "example", "fact"] }
+fn kinds() -> Text[] { return ["term", "what", "how", "why", "example", "case", "data", "fact"] }
 
 fn note_task(p: Piece) -> Text {
-  return f"You are reading part of the book \"{p.book}\": the chapter \"{p.title}\", {page_span(p.first, p.last)}. A student will learn this part from your ideas instead of reading it, so pull out everything they must know: 2 to 8 ideas, the most important first.\n\nFor each idea give:\n- kind: one of term (a word or name the text defines), what (what something is), how (how something is done or works, with its steps), why (why it is done, what it is for, or what causes it), example, fact.\n- idea: one or two plain sentences in your own words, saying exactly what the text says and nothing it does not.\n- quote: 5 to 30 words copied exactly, character for character, from the text below, that the idea comes from.\n\nUse only this text, never what you know from elsewhere. If the text is only a table of contents, an index, a list of references or acknowledgements, give no ideas.\nAnswer as JSON: {{\"ideas\": [{{\"kind\": \"...\", \"idea\": \"...\", \"quote\": \"...\"}}]}}\n\nThe text:\n{p.text}"
+  return f"You are reading part of the book \"{p.book}\": the chapter \"{p.title}\", {page_span(p.first, p.last)}. A student will learn this part from your ideas instead of reading it, so pull out everything they must know: 3 to 10 ideas, the most important first. Keep the examples and case studies: they are what makes an idea easy to understand and remember.\n\nFor each idea give:\n- kind: one of term (a word or name the text defines), what (what something is), how (how something is done or works, with its steps), why (why it is done, what it is for, or what causes it), example (an example the text gives), case (a case study, a real story or a worked scenario, with its names and numbers), data (a number, a result or a finding), fact.\n- idea: one or two plain sentences in your own words, saying exactly what the text says and nothing it does not.\n- quote: 5 to 30 words copied exactly, character for character, from the text below, that the idea comes from.\n\nUse only this text, never what you know from elsewhere. If the text is only a table of contents, an index, a list of references or acknowledgements, give no ideas.\nAnswer as JSON: {{\"ideas\": [{{\"kind\": \"...\", \"idea\": \"...\", \"quote\": \"...\"}}]}}\n\nThe text:\n{p.text}"
 }
 
 // Text with too few sentences to hold an idea: a contents page, an index,
@@ -314,9 +325,9 @@ fn quoted(i: Noted, flat_text: Text) -> Bool {
 // at least half of them, and one, found in the piece word for word.
 fn ideas_ok(got: Ideas, p: Piece) -> Text {
   if got.ideas.is_empty() {
-    return if no_ideas_here(p.text) { "" } else { "this text has ideas to learn; give 2 to 8 of them, each with a quote copied from the text" }
+    return if no_ideas_here(p.text) { "" } else { "this text has ideas to learn; give 3 to 10 of them, each with a quote copied from the text" }
   }
-  if got.ideas.length() > 10 { return "give at most 8 ideas, the most important" }
+  if got.ideas.length() > 12 { return "give at most 10 ideas, the most important" }
   for i in got.ideas {
     if not kinds().contains(i.kind) { return "kind \"" + i.kind + "\" is not one of " + kinds().join(", ") }
     if i.idea.trim().length() < 10 { return "write each idea as one or two full sentences" }
@@ -403,7 +414,7 @@ fn ideas_list(ideas: Idea[]) -> Text {
 
 fn write_task(s: Section) -> Text {
   let most = (s.ideas.length() / 3).ceil().clamp(2, 12)
-  return f"Write study notes for the chapter \"{s.title}\" of the book \"{s.book}\", from the numbered ideas below, which were checked against the book. A student will learn the chapter from your notes alone, so cover every idea, clearly and briefly.\n\nGive:\n- gist: two or three sentences: what this chapter is about and why it matters.\n- cards: 2 to {most} concept cards, in the book's order. Each card:\n  - concept: its name, 1 to 6 words.\n  - what: what it is, in one or two plain sentences.\n  - how: how it is done or how it works, step by step if there are steps; \"\" if the ideas do not say.\n  - why: why it is done, what it is for or what causes it; \"\" if the ideas do not say.\n  - example: an example from the ideas; \"\" if there is none.\n  - bullets: 0 to 4 short key points not already said above.\n  - from: the numbers of the ideas the card is built from.\n\nUse only what the ideas say: add no fact, number, name or example of your own. Every idea must be in at least one card.\nAnswer as JSON: {{\"gist\": \"...\", \"cards\": [{{\"concept\": \"...\", \"what\": \"...\", \"how\": \"...\", \"why\": \"...\", \"example\": \"...\", \"bullets\": [\"...\"], \"from\": [1, 2]}}]}}\n\nThe ideas:\n{ideas_list(s.ideas)}"
+  return f"Write study notes for the chapter \"{s.title}\" of the book \"{s.book}\", from the numbered ideas below, which were checked against the book. A student will learn the chapter from your notes alone, quickly, so cover every idea, clearly and briefly, and keep every example and case study: they make the ideas easy to understand.\n\nGive:\n- gist: two or three sentences: what this chapter is about and why it matters.\n- takeaways: 2 to 5 short sentences, the points of this chapter most worth remembering.\n- cards: 2 to {most} concept cards, in the book's order. Each card:\n  - concept: its name, 1 to 6 words.\n  - what: what it is, in one or two plain sentences.\n  - how: how it is done or how it works, step by step if there are steps; \"\" if the ideas do not say.\n  - why: why it is done, what it is for or what causes it; \"\" if the ideas do not say.\n  - example: an example from the ideas; \"\" if there is none.\n  - case_study: a case study or real story from the ideas that shows it at work, with its names and numbers; \"\" if there is none.\n  - bullets: 0 to 4 short key points not already said above, such as numbers and results.\n  - from: the numbers of the ideas the card is built from.\n\nUse only what the ideas say: add no fact, number, name or example of your own. Every idea must be in at least one card.\nAnswer as JSON: {{\"gist\": \"...\", \"takeaways\": [\"...\"], \"cards\": [{{\"concept\": \"...\", \"what\": \"...\", \"how\": \"...\", \"why\": \"...\", \"example\": \"...\", \"case_study\": \"...\", \"bullets\": [\"...\"], \"from\": [1, 2]}}]}}\n\nThe ideas:\n{ideas_list(s.ideas)}"
 }
 
 fn used(c: Cards) -> Number[] {
@@ -421,6 +432,8 @@ fn cards_ok(c: Cards, s: Section) -> Text {
   if c.cards.is_empty() { return "give at least two concept cards" }
   if c.cards.length() > 16 { return "give at most 12 cards; join the small ones" }
   if c.gist.trim().length() < 20 { return "write the gist: two or three sentences about the chapter" }
+  let points = for t in c.takeaways where t.trim().length() >= 10 { t }
+  if points.length() < 2 or c.takeaways.length() > 6 { return "give 2 to 5 takeaways, each a short sentence" }
   for card in c.cards {
     if card.concept.trim().is_empty() or card.what.trim().length() < 10 { return "every card needs its concept and what it is" }
     if card.from.is_empty() { return f"the card \"{card.concept}\" must say in from which ideas it is built from" }
@@ -437,7 +450,7 @@ fn cards_ok(c: Cards, s: Section) -> Text {
 }
 
 fn card_text(c: Card) -> Text {
-  return [c.what, c.how, c.why, c.example, c.bullets.join(" ")].join(" ")
+  return [c.what, c.how, c.why, c.example, c.case_study, c.bullets.join(" ")].join(" ")
 }
 
 // The share of a card's words, as plain forms, that are nowhere in the text
@@ -462,16 +475,17 @@ fn drift_line() -> Number { return 0.3 }
 fn cards_by_kosika(s: Section) -> Cards {
   let cards: Card[] = for i in 0 until s.ideas.length() limit 1000 {
     let idea = s.ideas[i]
-    {concept: clip(idea.idea.words().take(5).join(" ").trim_marks(".,;:"), 60), what: idea.idea, how: "", why: "", example: "", bullets: [], from: [i + 1]}
+    {concept: clip(idea.idea.words().take(5).join(" ").trim_marks(".,;:"), 60), what: idea.idea, how: "", why: "", example: "", case_study: "", bullets: [], from: [i + 1]}
   }
-  return {gist: "", cards: cards}
+  return {gist: "", takeaways: [], cards: cards}
 }
 
 fn wrote(c: Cards, s: Section) -> Wrote {
   let by_kosika = c.gist.is_empty() and not c.cards.is_empty() and c.cards.length() == s.ideas.length()
   let known = (for w in plain_words(s.text) { stem(w) }).unique()
   let drifting = for card in c.cards where drift_against(card, known) > drift_line() { card.concept }
-  return {chapter: s.chapter, part: s.part, count: s.ideas.length(), gist: c.gist.trim(), cards: c.cards, drifting: drifting, by_kosika: by_kosika}
+  let kept = for t in c.takeaways where t.trim().length() >= 10 { t.trim() }
+  return {chapter: s.chapter, part: s.part, count: s.ideas.length(), gist: c.gist.trim(), takeaways: kept, cards: c.cards, drifting: drifting, by_kosika: by_kosika}
 }
 
 workflow write_section(s: Section) -> Wrote {
@@ -544,14 +558,16 @@ fn chapter_notes(c: Chapter, book: Book, pieces: Piece[], reads: Read[], wrote_a
   let cards = cards_in(mine)
   let ideas = ideas_in(for r in reads where r.chapter == c.n { r })
   let gist = (for w in mine where not w.gist.is_empty() { w.gist }).join(" ")
+  var takeaways: Text[] = []
+  for w in mine { takeaways = takeaways.concat(w.takeaways) }
   let terms = key_words(for p in pieces where p.chapter == c.n { p })
-  let said = (for w in plain_words(gist + " " + (for card in cards { card.concept + " " + card_text(card) }).join(" ")) { stem(w) }).unique()
+  let said = (for w in plain_words(gist + " " + takeaways.join(" ") + " " + (for card in cards { card.concept + " " + card_text(card) }).join(" ")) { stem(w) }).unique()
   let missing = for t in terms where not said.contains(t) { t }
   var drifting: Text[] = []
   for w in mine { drifting = drifting.concat(w.drifting) }
   let order = (for ch in chapters where not ch.skip { ch.n }).index_of(c.n).or(-1)
   let map = if order >= 0 and order < maps.length() { maps[order].page } else { "" }
-  return {n: c.n, title: c.title, first: c.first, last: c.last, gist: gist, cards: cards, ideas: ideas, figures: if c.skip { [] } else { figures_of(book, c) }, terms: terms, missing: missing, drifting: drifting, map: map, skip: c.skip}
+  return {n: c.n, title: c.title, first: c.first, last: c.last, gist: gist, takeaways: takeaways, cards: cards, ideas: ideas, figures: if c.skip { [] } else { figures_of(book, c) }, terms: terms, missing: missing, drifting: drifting, map: map, skip: c.skip}
 }
 
 fn coverage(book: Book, chapters: ChapterNotes[], pieces: Piece[], reads: Read[], wrote_all: Wrote[], markdown_words: Number) -> Score {
@@ -588,6 +604,7 @@ fn card_md(c: Card, ideas: Idea[], drifting: Text[]) -> Text {
   if not c.how.trim().is_empty() { out = out + f"\n**How:** {c.how.trim()}\n" }
   if not c.why.trim().is_empty() { out = out + f"\n**Why:** {c.why.trim()}\n" }
   if not c.example.trim().is_empty() { out = out + f"\n**Example:** {c.example.trim()}\n" }
+  if not c.case_study.trim().is_empty() { out = out + f"\n**Case study:** {c.case_study.trim()}\n" }
   let points = for b in c.bullets where not b.trim().is_empty() { "- " + b.trim() }
   if not points.is_empty() { out = out + "\n" + points.join("\n") + "\n" }
   let first = c.from.first().or(0)
@@ -603,6 +620,7 @@ fn chapter_md(c: ChapterNotes) -> Text {
   if c.skip { return "" }
   var out = f"## {c.n}. {c.title}\n\n*{page_span(c.first, c.last)} · {c.cards.length()} concepts from {c.ideas.length()} checked ideas*\n\n"
   if not c.gist.is_empty() { out = out + c.gist + "\n\n" }
+  if not c.takeaways.is_empty() { out = out + "**Key takeaways**\n\n" + (for t in c.takeaways { "- " + t }).join("\n") + "\n\n" }
   // a section's cards number its own ideas from 1, so each card is shown
   // with the ideas it was written from
   out = out + (for card in c.cards { card_md(card, c.ideas, c.drifting) }).join("\n")
@@ -626,13 +644,64 @@ fn score_md(s: Score) -> Text {
   return f"## Scorecard\n\n{verdict}\n\n| Check | Result |\n| --- | --- |\n| Pages read | {s.pages - s.pages_skipped} of {s.pages} ({s.pages_skipped} before the first chapter or back matter, listed, not read) |\n| Chapters with notes | {s.chapters_with_notes} of {s.chapters} |\n| Pieces that gave checked ideas | {s.pieces_read} of {s.pieces} ({percent(s.pieces_read, s.pieces)}) |\n| Ideas kept, each quoted from the book word for word | {s.ideas} |\n| Ideas dropped because their quote was not in the book | {s.ideas_dropped} |\n| Concept cards | {s.cards} ({s.cards_by_kosika} sections written by Kosika itself when the writer failed) |\n| Cards drifting from the book | {s.cards_drifting} |\n| Key words covered | {s.terms_covered} of {s.terms} ({percent(s.terms_covered, s.terms)}) |\n| Figures and tables listed | {s.figures} |\n| Words: book → notes | {s.words_in} → {s.words_out} ({shorter}× shorter) |\n"
 }
 
-fn notes_of(book: Book, chapters: Chapter[], pieces: Piece[], reads: Read[], wrote_all: Wrote[], maps: Design[]) -> Notes {
+fn notes_of(book: Book, chapters: Chapter[], pieces: Piece[], reads: Read[], wrote_all: Wrote[], maps: Design[], overview: Overview) -> Notes {
   let notes = for c in chapters { chapter_notes(c, book, pieces, reads, wrote_all, maps, chapters) }
   let body = (for c in notes { chapter_md(c) }).join("")
-  let head = f"# Study notes: {book.title}\n\nRead A to Z by Kosika: {book.pages.length()} pages. Every idea below was checked: the words it comes from were found in the book, and the page is given.\n\n## Contents\n\n{contents_md(notes)}\n\n"
+  let head = f"# Study notes: {book.title}\n\nRead A to Z by Kosika: {book.pages.length()} pages. Every idea below was checked: the words it comes from were found in the book, and the page is given.\n\n{overview_md(overview)}## Contents\n\n{contents_md(notes)}\n\n"
   let words = (head + body).words().length()
   let score = coverage(book, notes, pieces, reads, wrote_all, words)
-  return {title: book.title, source: book.source, markdown: head + body + score_md(score), chapters: notes, score: score}
+  return {title: book.title, source: book.source, markdown: head + body + score_md(score), overview: overview, chapters: notes, score: score}
+}
+
+// ---------------------------------------------------------------- the book on one page
+
+fn overview_ask(book: Book, all: Wrote[]) -> OverviewAsk {
+  let lines = for w in all where not w.gist.is_empty() or not w.takeaways.is_empty() { f"Chapter {w.chapter}: " + w.gist + " " + w.takeaways.join(" ") }
+  return {book: book.title, notes: clip(lines.join("\n"), 14000)}
+}
+
+fn overview_task(a: OverviewAsk) -> Text {
+  return f"Below are checked study notes, chapter by chapter, for the book \"{a.book}\". Write the whole book on one page for a reader who wants to understand it quickly.\n\nGive:\n- summary: one paragraph of 80 to 200 words: what the book is about, how its parts fit together, and what the reader will be able to do after it.\n- big_ideas: the 4 to 10 most important ideas of the whole book, each one short sentence.\n\nUse only what the notes say; add nothing of your own.\nAnswer as JSON: {{\"summary\": \"...\", \"big_ideas\": [\"...\"]}}\n\nThe notes:\n{a.notes}"
+}
+
+fn text_drift(text: Text, known: Text[]) -> Number {
+  let mine = (for w in plain_words(text) where w.length() >= 4 and not common(w) and not w.to_number().exists() { stem(w) }).unique()
+  if mine.is_empty() { return 0 }
+  let new = for w in mine where not known.contains(w) { w }
+  return (new.length() / mine.length() * 100).round() / 100
+}
+
+// "" when the one page can be kept: long enough, its big ideas listed, and
+// it says only what the chapter notes say.
+fn overview_ok(o: Overview, a: OverviewAsk) -> Text {
+  let words = o.summary.words().length()
+  if words < 60 or words > 260 { return f"the summary has {words} words; write 80 to 200" }
+  let ideas = for i in o.big_ideas where i.trim().length() >= 10 { i }
+  if ideas.length() < 4 or o.big_ideas.length() > 10 { return "give 4 to 10 big ideas, each one short sentence" }
+  let known = (for w in plain_words(a.notes) { stem(w) }).unique()
+  let drift = text_drift(o.summary + " " + o.big_ideas.join(" "), known)
+  if drift > drift_line() { return f"{(drift * 100).round()}% of your words are not in the notes; say only what the notes say" }
+  return ""
+}
+
+fn no_overview() -> Overview { return {summary: "", big_ideas: []} }
+
+workflow write_overview(a: OverviewAsk) -> Overview {
+  got = use_model summarizer(overview_task(a)) verify overview_ok(got, a) retry 1 otherwise no_overview()
+  out = got
+}
+
+workflow summarize(a: OverviewAsk) -> Overview {
+  got = match a.notes.is_empty() {
+    case true { no_overview() }
+    case _ { call write_overview(a) }
+  }
+  out = got
+}
+
+fn overview_md(o: Overview) -> Text {
+  if o.summary.is_empty() { return "" }
+  return "## The book on one page\n\n" + o.summary.trim() + "\n\n**Big ideas**\n\n" + (for i in o.big_ideas { "- " + i.trim() }).join("\n") + "\n\n"
 }
 
 // ---------------------------------------------------------------- the run
@@ -654,8 +723,9 @@ workflow main(book: Book) -> Notes {
   reads    = for r in readings(pieces, book) limit 1000 { call read_piece(r) }
   sections = sections_of(chapters, pieces, reads, book.title)
   wrote_all = for s in sections limit 600 { call write_section(s) }
+  overview = call summarize(overview_ask(book, wrote_all))
   maps     = for m in mappings(chapters, wrote_all) limit 300 { call draw_map(m) }
-  out      = notes_of(book, chapters, pieces, reads, wrote_all, maps)
+  out      = notes_of(book, chapters, pieces, reads, wrote_all, maps, overview)
 }
 
 // ---------------------------------------------------------------- tests
@@ -734,17 +804,17 @@ test "cards must name real ideas and use four in five of them" {
     {kind: "what", idea: "A hash table stores values under keys.", quote: "", page: 2},
     {kind: "how", idea: "A hash function picks the bucket.", quote: "", page: 2},
     {kind: "why", idea: "It doubles to keep lookups fast.", quote: "", page: 2}]}
-  card: Card = {concept: "Hash table", what: "Stores values under keys.", how: "", why: "", example: "", bullets: [], from: [1, 2, 3]}
-  expect cards_ok({gist: "Hash tables find values by key, fast.", cards: [card]}, s) == ""
-  expect cards_ok({gist: "Hash tables find values by key, fast.", cards: [{..card, from: [7]}]}, s).contains("numbered 1 to 3")
-  expect cards_ok({gist: "Hash tables find values by key, fast.", cards: [{..card, from: [1]}]}, s).contains("in no card")
+  card: Card = {concept: "Hash table", what: "Stores values under keys.", how: "", why: "", example: "", case_study: "", bullets: [], from: [1, 2, 3]}
+  expect cards_ok({gist: "Hash tables find values by key, fast.", takeaways: ["Keys find values fast.", "Tables double when full."], cards: [card]}, s) == ""
+  expect cards_ok({gist: "Hash tables find values by key, fast.", takeaways: ["Keys find values fast.", "Tables double when full."], cards: [{..card, from: [7]}]}, s).contains("numbered 1 to 3")
+  expect cards_ok({gist: "Hash tables find values by key, fast.", takeaways: ["Keys find values fast.", "Tables double when full."], cards: [{..card, from: [1]}]}, s).contains("in no card")
   k = cards_by_kosika(s)
   expect k.cards.length() == 3 and k.cards[2].from == [3]
 }
 
 test "a card that says what the book does not is drifting" {
   source = "A hash table stores values under keys. A hash function turns a key into a number that picks a bucket."
-  kept: Card = {concept: "Hash table", what: "A hash table stores values under keys, picked by a hash function.", how: "", why: "", example: "", bullets: [], from: [1]}
+  kept: Card = {concept: "Hash table", what: "A hash table stores values under keys, picked by a hash function.", how: "", why: "", example: "", case_study: "", bullets: [], from: [1]}
   bent: Card = {..kept, what: "Cuckoo hashing relocates entries between twin arrays, guaranteeing worst-case retrieval."}
   expect drift(kept, source) < 0.2
   expect drift(bent, source) > drift_line()
@@ -766,10 +836,12 @@ test "the notes and the scorecard come together from what was read" {
   ps = pieces_of(b, cs)
   idea: Idea = {kind: "what", idea: "A hash table stores values under keys.", quote: "A hash table stores values under keys.", page: 2}
   reads: Read[] = [{piece: 0, chapter: 1, first: 2, last: 2, ideas: [idea], dropped: 1, empty_ok: false}, {piece: 1, chapter: 2, first: 3, last: 3, ideas: [], dropped: 0, empty_ok: false}]
-  card: Card = {concept: "Hash table", what: "A hash table stores values under keys.", how: "A hash function picks a bucket.", why: "", example: "", bullets: ["Doubles when three quarters full"], from: [1]}
-  w: Wrote[] = [{chapter: 1, part: 1, count: 1, gist: "Hash tables find values by their keys.", cards: [card], drifting: [], by_kosika: false}]
-  n = notes_of(b, cs, ps, reads, w, [{page: "<svg/>", problems: []}])
+  card: Card = {concept: "Hash table", what: "A hash table stores values under keys.", how: "A hash function picks a bucket.", why: "", example: "", case_study: "", bullets: ["Doubles when three quarters full"], from: [1]}
+  w: Wrote[] = [{chapter: 1, part: 1, count: 1, gist: "Hash tables find values by their keys.", takeaways: ["A hash table finds a value by its key."], cards: [card], drifting: [], by_kosika: false}]
+  n = notes_of(b, cs, ps, reads, w, [{page: "<svg/>", problems: []}], {summary: "A short book about hash tables.", big_ideas: ["Keys find values."]})
   expect n.markdown.contains("### Hash table")
+  expect n.markdown.contains("## The book on one page")
+  expect n.markdown.contains("**Key takeaways**\n\n- A hash table finds a value by its key.")
   expect n.markdown.contains("> p. 2: “A hash table stores values under keys.”")
   expect n.score.chapters == 2 and n.score.chapters_with_notes == 1
   expect n.score.pieces_read == 1 and n.score.ideas_dropped == 1
@@ -779,17 +851,32 @@ test "the notes and the scorecard come together from what was read" {
 }
 
 test "a long chapter's cards count its ideas through every section" {
-  card: Card = {concept: "c", what: "w", how: "", why: "", example: "", bullets: [], from: [1, 2]}
-  ws: Wrote[] = [{chapter: 1, part: 1, count: 40, gist: "", cards: [card], drifting: [], by_kosika: false}, {chapter: 1, part: 2, count: 5, gist: "", cards: [card], drifting: [], by_kosika: false}]
+  card: Card = {concept: "c", what: "w", how: "", why: "", example: "", case_study: "", bullets: [], from: [1, 2]}
+  ws: Wrote[] = [{chapter: 1, part: 1, count: 40, gist: "", takeaways: [], cards: [card], drifting: [], by_kosika: false}, {chapter: 1, part: 2, count: 5, gist: "", takeaways: [], cards: [card], drifting: [], by_kosika: false}]
   cs = cards_in(ws)
   expect cs[0].from == [1, 2] and cs[1].from == [41, 42]
 }
 
 test "a chapter map is a mind map Kosika Designs can draw" {
   c: Chapter = {n: 1, title: "Hash tables and the long names of chapters", first: 2, last: 4, skip: false}
-  card: Card = {concept: "Hash function", what: "Turns a key into a bucket number.", how: "", why: "", example: "", bullets: [], from: [1]}
+  card: Card = {concept: "Hash function", what: "Turns a key into a bucket number.", how: "", why: "", example: "", case_study: "", bullets: [], from: [1]}
   r = map_of(c, "Hash tables find values by key.", [card, {..card, concept: "Collision"}])
   expect problems(r.structure) == []
   expect r.structure.parts.length() == 3
   expect r.structure.parts[0].label.length() <= 28
+}
+
+test "the book on one page must be long enough and keep to the notes" {
+  a: OverviewAsk = {book: "b", notes: "Chapter 1: A hash table stores values under keys and finds them fast. A hash function picks the bucket. Collisions share a bucket. The table doubles when three quarters full so lookups stay fast."}
+  long = (for i in 1 to 9 { "A hash table stores values under keys and a hash function picks the bucket." }).join(" ")
+  good: Overview = {summary: long, big_ideas: ["A hash table stores values under keys.", "A hash function picks the bucket.", "Collisions share a bucket.", "The table doubles when full."]}
+  expect overview_ok(good, a) == ""
+  expect overview_ok({..good, summary: "Too short."}, a).contains("write 80 to 200")
+  expect overview_ok({..good, big_ideas: ["One idea only here."]}, a).contains("4 to 10 big ideas")
+  bent = (for i in 1 to 9 { "Quantum entanglement teleports photons across galaxies instantaneously." }).join(" ")
+  expect overview_ok({..good, summary: bent}, a).contains("not in the notes")
+}
+
+test "a case study is an idea the noter may give" {
+  expect kinds().contains("case") and kinds().contains("data")
 }

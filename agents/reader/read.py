@@ -71,6 +71,8 @@ section.ch{margin:40px 0 0;padding-top:12px;border-top:2px solid var(--line)}sec
 .card.drift{border-left-color:var(--warn)}.drift-note{color:var(--warn);font-size:14px}
 details.map{margin:14px 0}details.map summary{cursor:pointer;color:var(--accent)}
 details.map iframe{width:100%;height:900px;border:1px solid var(--line);border-radius:10px;background:#0b0a14}
+.take{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 18px;margin:12px 0}.take b{color:var(--amber)}.take ul{margin:6px 0;padding-left:20px}
+.one{background:var(--card);border:1px solid var(--line);border-top:4px solid var(--amber);border-radius:12px;padding:16px 20px;margin:0 0 24px}.one h2{margin:0 0 8px;font-size:20px}
 .figs,.missing{font-size:14px;color:var(--soft)}table{border-collapse:collapse;width:100%;font-size:15px;margin-top:10px}
 td,th{border:1px solid var(--line);padding:6px 10px;text-align:left}.pass{color:#1e8e3e;font-weight:600}.fail{color:var(--warn);font-weight:600}
 """
@@ -82,9 +84,9 @@ def esc(text) -> str:
 
 def card_html(card: dict, ideas: list[dict], drifting: list[str]) -> str:
     rows = [f"<h3>{esc(card['concept'])}</h3>", f"<p><b>What</b> {esc(card['what'])}</p>"]
-    for name in ("how", "why", "example"):
+    for name, label in (("how", "How"), ("why", "Why"), ("example", "Example"), ("case_study", "Case study")):
         if card.get(name, "").strip():
-            rows.append(f"<p><b>{name.capitalize()}</b> {esc(card[name])}</p>")
+            rows.append(f"<p><b>{label}</b> {esc(card[name])}</p>")
     points = [b for b in card.get("bullets", []) if b.strip()]
     if points:
         rows.append("<ul>" + "".join(f"<li>{esc(b)}</li>" for b in points) + "</ul>")
@@ -106,6 +108,8 @@ def chapter_html(ch: dict) -> str:
            f'<div class="meta">{pages} · {len(ch["cards"])} concepts from {len(ch["ideas"])} checked ideas</div>']
     if ch.get("gist"):
         out.append(f'<p class="gist">{esc(ch["gist"])}</p>')
+    if ch.get("takeaways"):
+        out.append('<div class="take"><b>Key takeaways</b><ul>' + "".join(f"<li>{esc(t)}</li>" for t in ch["takeaways"]) + "</ul></div>")
     if ch.get("map"):
         out.append(f'<details class="map"><summary>Mind map of this chapter (Kosika Designs)</summary>'
                    f'<iframe loading="lazy" sandbox="allow-scripts" srcdoc="{esc(ch["map"])}"></iframe></details>')
@@ -150,8 +154,15 @@ def page_of(notes: dict, run: dict) -> str:
             f"<title>Study notes: {esc(notes['title'])}</title><style>{STYLE}</style></head><body><main>"
             f"<h1>{esc(notes['title'])}</h1><p class=\"lede\">Study notes, read A to Z by Kosika. Every idea was checked: "
             f"the words it comes from were found in the book, and its page is given. {esc(ran)}.</p>"
-            f"<nav><b>Contents</b><ol>{contents}</ol></nav>{''.join(chapter_html(c) for c in notes['chapters'])}"
+            f"{overview_html(notes.get('overview') or {})}<nav><b>Contents</b><ol>{contents}</ol></nav>{''.join(chapter_html(c) for c in notes['chapters'])}"
             f'<section class="ch"><h2>Scorecard</h2>{verdict}<table>{table}</table></section></main></body></html>')
+
+
+def overview_html(o: dict) -> str:
+    if not o.get("summary"):
+        return ""
+    ideas = "".join(f"<li>{esc(i)}</li>" for i in o.get("big_ideas", []))
+    return f'<div class="one"><h2>The book on one page</h2><p>{esc(o["summary"])}</p><b>Big ideas</b><ul>{ideas}</ul></div>'
 
 
 def calls_in(trace: Path) -> int:
@@ -201,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{'PASSED' if s['passed'] else 'NOT PASSED'}: {s['chapters_with_notes']}/{s['chapters']} chapters, "
           f"{s['pieces_read']}/{s['pieces']} pieces, {s['ideas']} ideas ({s['ideas_dropped']} dropped), "
           f"{s['cards']} cards ({s['cards_drifting']} drifting), key words {s['terms_covered']}/{s['terms']}, "
-          f"{s['words_in']} → {s['words_out']} words, {run['model_calls']} model calls, {minutes} min")
+          f"{s['words_in']} -> {s['words_out']} words, {run['model_calls']} model calls, {minutes} min")
     print(f"Notes: {out / 'notes.html'}")
     return 0
 
