@@ -1,0 +1,978 @@
+{
+ "model": "kosika-virtual:soft",
+ "score": 15,
+ "of": 20,
+ "by_kind": {
+  "code": "3/5",
+  "maths": "7/7",
+  "project": "1/3",
+  "question": "4/5"
+ },
+ "median_seconds": 4.9,
+ "total_seconds": 434.8,
+ "model_calls": 116,
+ "calls_per_pass": 7.7,
+ "model_seconds": 335.1,
+ "web_reads": 2,
+ "overclaims": 1,
+ "label": "after (cold)",
+ "rows": [
+  {
+   "id": "pct",
+   "kind": "maths",
+   "passed": true,
+   "why": "",
+   "seconds": 9.7,
+   "model_calls": 6,
+   "by_model": {
+    "planner": 1,
+    "counter": 2,
+    "thinker": 1,
+    "reviewer/decide/evidence": 1,
+    "writer": 1
+   },
+   "model_seconds": 9.1,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "What is 18% of 2450, and is it more than 400?",
+    "kind": "maths",
+    "goal": "Determine 18% of 2450 and compare the result to 400",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "calc",
+      "what": "Calculate 18% of 2450 using the formula 0.18 \u00d7 2450",
+      "answer": "18% of 2450, which is 441, more than 400: 0.18*2450 = 441",
+      "check": "computed by Kosika; two formulas written apart gave the same number",
+      "ok": true,
+      "ran": true
+     },
+     {
+      "n": 2,
+      "tool": "think",
+      "what": "Compare the calculated value to 400 and state whether it is greater",
+      "answer": "More than 400.",
+      "check": "a second model read it and quoted where it does what was asked",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "18% of 2450 is 441, which is more than 400.",
+    "passed": 2,
+    "failed": 0,
+    "note": "All 2 steps passed their checks.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, reviewer"
+  },
+  {
+   "id": "train",
+   "kind": "maths",
+   "passed": true,
+   "why": "",
+   "seconds": 4.9,
+   "model_calls": 9,
+   "by_model": {
+    "planner": 1,
+    "counter": 4,
+    "thinker": 2,
+    "reviewer/decide/evidence": 1,
+    "writer": 1
+   },
+   "model_seconds": 3.2,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "A train goes 180 km in 2.5 hours. What is its speed, and how long would it take to go 420 km at that speed?",
+    "kind": "maths",
+    "goal": "Calculate the train\u2019s average speed and the time needed to travel 420 km at that speed.",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "calc",
+      "what": "Compute average speed by dividing distance by time.",
+      "answer": "average speed in km per hour: 180/2.5 = 72",
+      "check": "computed by Kosika; two formulas written apart gave the same number",
+      "ok": true,
+      "ran": true
+     },
+     {
+      "n": 2,
+      "tool": "calc",
+      "what": "Determine travel time for 420 km using the computed speed.",
+      "answer": "time in hours to travel 420 km at that speed: 420/(180/2.5) = 5.833333",
+      "check": "computed by Kosika; two formulas written apart gave the same number",
+      "ok": true,
+      "ran": true
+     },
+     {
+      "n": 3,
+      "tool": "think",
+      "what": "Present the speed and travel time in a clear sentence.",
+      "answer": "The train\u2019s average speed is 72\u202fkm/h, and at that speed it would take about 5\u202fhours\u202f50\u202fminutes to travel 420\u202fkm.",
+      "check": "a second model read it and quoted where it does what was asked on the second try, after the first was sent back",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "The train\u2019s average speed is 72\u202fkm/h, and at that speed it would take about 5.833333 hours (\u22485\u202fhours\u202f50\u202fminutes) to travel 420\u202fkm.",
+    "passed": 3,
+    "failed": 0,
+    "note": "All 3 steps passed their checks.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, reviewer"
+  },
+  {
+   "id": "tip",
+   "kind": "maths",
+   "passed": true,
+   "why": "",
+   "seconds": 3.0,
+   "model_calls": 6,
+   "by_model": {
+    "planner": 1,
+    "counter": 4,
+    "writer": 1
+   },
+   "model_seconds": 2.2,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "A meal costs 640 kr. How much is a 15% tip, and what is the total?",
+    "kind": "maths",
+    "goal": "Calculate a 15% tip on a 640 kr meal and the resulting total.",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "calc",
+      "what": "Compute 15% of 640 kr to find the tip amount.",
+      "answer": "15% tip: 0.15*640 = 96",
+      "check": "computed by Kosika; two formulas written apart gave the same number",
+      "ok": true,
+      "ran": true
+     },
+     {
+      "n": 2,
+      "tool": "calc",
+      "what": "Add the tip to the meal cost to find the total.",
+      "answer": "total cost of the meal including the 15% tip: 640 + 0.15*640 = 736",
+      "check": "computed by Kosika; two formulas written apart gave the same number",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "The 15% tip is 96\u202fkr, and the total cost including the tip is 736\u202fkr.",
+    "passed": 2,
+    "failed": 0,
+    "note": "All 2 steps passed their checks.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, reviewer"
+  },
+  {
+   "id": "circle",
+   "kind": "maths",
+   "passed": true,
+   "why": "",
+   "seconds": 2.1,
+   "model_calls": 4,
+   "by_model": {
+    "planner": 1,
+    "counter": 2,
+    "writer": 1
+   },
+   "model_seconds": 1.5,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "What is the area of a circle with radius 7 cm?",
+    "kind": "question",
+    "goal": "Calculate the area of a circle with radius 7\u202fcm",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "calc",
+      "what": "Compute the area using the formula\u202f\u03c0\u202f\u00d7\u202f7\u00b2",
+      "answer": "area of a circle with radius 7 cm: pi*7^2 = 153.93804",
+      "check": "computed by Kosika; two formulas written apart gave the same number",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "The area of a circle with radius\u202f7\u202fcm is\u202f153.93804.",
+    "passed": 1,
+    "failed": 0,
+    "note": "The one step passed its check.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, reviewer"
+  },
+  {
+   "id": "average",
+   "kind": "maths",
+   "passed": true,
+   "why": "",
+   "seconds": 2.9,
+   "model_calls": 4,
+   "by_model": {
+    "planner": 1,
+    "counter": 2,
+    "writer": 1
+   },
+   "model_seconds": 2.4,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "What is the average of 12, 17, 23 and 40?",
+    "kind": "maths",
+    "goal": "Calculate the average of the numbers 12, 17, 23, and 40.",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "calc",
+      "what": "Compute the average of 12, 17, 23, and 40 using the formula (12+17+23+40)/4.",
+      "answer": "the average of 12, 17, 23, and 40: (12+17+23+40)/4 = 23",
+      "check": "computed by Kosika; two formulas written apart gave the same number",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "The average of 12, 17, 23, and 40 is 23.",
+    "passed": 1,
+    "failed": 0,
+    "note": "The one step passed its check.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, reviewer"
+  },
+  {
+   "id": "compound",
+   "kind": "maths",
+   "passed": true,
+   "why": "",
+   "seconds": 2.9,
+   "model_calls": 4,
+   "by_model": {
+    "planner": 1,
+    "counter": 2,
+    "writer": 1
+   },
+   "model_seconds": 2.4,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "If I save 10000 kr at 5% interest a year, compounded yearly, how much do I have after 3 years?",
+    "kind": "maths",
+    "goal": "Calculate the amount after 3 years when saving 10,000\u202fkr at 5% annual interest compounded yearly.",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "calc",
+      "what": "Compute 10,000\u202fkr\u202f\u00d7\u202f(1\u202f+\u202f0.05)^3",
+      "answer": "total amount after 3 years: 10000*(1+0.05)^3 = 11576.25",
+      "check": "computed by Kosika; two formulas written apart gave the same number",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "11576.25",
+    "passed": 1,
+    "failed": 0,
+    "note": "The one step passed its check.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, reviewer"
+  },
+  {
+   "id": "vowels",
+   "kind": "code",
+   "passed": true,
+   "why": "",
+   "seconds": 4.5,
+   "model_calls": 4,
+   "by_model": {
+    "planner": 1,
+    "tester": 1,
+    "coder": 1,
+    "writer": 1
+   },
+   "model_seconds": 3.8,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "Write a function in Kosika that counts the vowels in a text.",
+    "kind": "code",
+    "goal": "Write a Kosika function that counts the vowels in a given text.",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "code",
+      "what": "A Kosika function `countVowels(text)` that returns the number of vowels (a, e, i, o, u, case\u2011insensitive) in `text`, plus a simple test verifying it with a sample string.",
+      "answer": "fn count_vowels(text: Text) -> Number {\n    let vowels = [\"a\",\"e\",\"i\",\"o\",\"u\"]\n    var count = 0\n    for ch in text.lower().chars() {\n        if vowels.contains(ch) {\n            count = count + 1\n        }\n    }\n    return count\n}\n\ntest \"the ask's own tests\" {\n  expect count_vowels(\"banana\") == 3\n  expect count_vowels(\"\") == 0\n  expect count_vowels(\"Apple\") == 2\n  expect count_vowels(\"aeiouAEIOU\") == 10\n}\n",
+      "check": "the engine checked the program and ran 4 checks, written before the code: all passed",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "fn count_vowels(text: Text) -> Number {\n    let vowels = [\"a\",\"e\",\"i\",\"o\",\"u\"]\n    var count = 0\n    for ch in text.lower().chars() {\n        if vowels.contains(ch) {\n            count = count + 1\n        }\n    }\n    return count\n}\n\ntest \"the ask's own tests\" {\n  expect count_vowels(\"banana\") == 3\n  expect count_vowels(\"\") == 0\n  expect count_vowels(\"Apple\") == 2\n  expect count_vowels(\"aeiouAEIOU\") == 10\n}",
+    "passed": 1,
+    "failed": 0,
+    "note": "The one step passed its check.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, reviewer"
+  },
+  {
+   "id": "reverse",
+   "kind": "code",
+   "passed": false,
+   "why": "no code step passed its check",
+   "seconds": 89.8,
+   "model_calls": 9,
+   "by_model": {
+    "planner": 1,
+    "tester": 2,
+    "coder": 4,
+    "replanner": 1,
+    "writer": 1
+   },
+   "model_seconds": 89.2,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "Write a function in Kosika that reverses the words of a sentence.",
+    "kind": "code",
+    "goal": "Write a Kosika function that reverses the words of a sentence.",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "code",
+      "what": "A Kosika function `reverseWords(sentence: Text) -> Text` that splits the sentence into words, reverses their order, and joins them back into a string, plus a test verifying it with a sample input.",
+      "answer": "fn reverseWords(sentence: Text) -> Text {\n    if sentence == \"\" {\n        return \"\"\n    }\n    var words = sentence.split(\" \")\n    var nonEmptyWords: Text[] = []\n    for w in words {\n        if w != \"\" {\n            nonEmptyWords.append(w)\n        }\n    }\n    var result = \"\"\n    for w in nonEmptyWords {\n        if result == \"\" {\n            result = w\n        } else {\n            result = w + \" \" + result\n        }\n    }\n    return result\n}\n\ntest \"reverseWords basic and edge cases\" {\n  expect reverseWords(\"hello world\") == \"world hello\"\n  expect reverseWords(\"a b c d\") == \"d c b a\"\n  expect reverseWords(\"\") == \"\"\n  expect reverseWords(\"single\") == \"single\"\n  expect reverseWords(\"  leading and trailing  \") == \"trailing and leading\"\n}\n",
+      "check": "still failing: kosika_ai_answer.kos: its test \"reverseWords basic and edge cases\" fails at line 24: expected reverseWords(\"hello world\") == \"world hello\" (left is \"\", right is \"world hello\")",
+      "ok": false,
+      "ran": true
+     },
+     {
+      "n": 5,
+      "tool": "code",
+      "what": "I will rewrite the Kosika function `reverseWords` to explicitly handle the split and reversal logic, ensuring the `nonEmptyWords` array is correctly populated and the final string is built by iterating through the reversed collection, while fixing the potential empty string return issue when the input consists solely of spaces.",
+      "answer": "fn reverseWords(sentence: Text) -> Text {\n  var parts = sentence.split(\" \")\n  var words: Text[] = []\n  for p in parts {\n    if p != \"\" {\n      words.append(p)\n    }\n  }\n  var result = \"\"\n  var i = words.length() - 1\n  while i >= 0 {\n    var w = words[i]\n    if result == \"\" {\n      result = w\n    } else {\n      result = w + \" \" + result\n    }\n    i = i - 1\n  }\n  return result\n}\n\ntest \"reverseWords tests\" {\n  expect reverseWords(\"hello world\") == \"world hello\"\n  expect reverseWords(\"  hello   world  \") == \"world hello\"\n  expect reverseWords(\"single\") == \"single\"\n  expect reverseWords(\"\") == \"\"\n  expect reverseWords(\"a b c\") == \"c b a\"\n}\n",
+      "check": "still failing: kosika_ai_answer.kos: its test \"reverseWords tests\" fails at line 24: expected reverseWords(\"hello world\") == \"world hello\" (left is \"\", right is \"world hello\")",
+      "ok": false,
+      "ran": true
+     }
+    ],
+    "answer": "Step 1 (code) is unchecked.  \nStep 5 (code) is unchecked.",
+    "passed": 0,
+    "failed": 2,
+    "note": "0 of 2 steps passed their checks; the rest are marked unchecked, and the reply says so. The planner was shown the checked plan of a similar earlier ask.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, reviewer"
+  },
+  {
+   "id": "fizz",
+   "kind": "code",
+   "passed": true,
+   "why": "",
+   "seconds": 4.4,
+   "model_calls": 4,
+   "by_model": {
+    "planner": 1,
+    "tester": 1,
+    "coder": 1,
+    "writer": 1
+   },
+   "model_seconds": 3.2,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "Write a function in Kosika that gives fizz, buzz, fizzbuzz or the number as text for a number.",
+    "kind": "code",
+    "goal": "Write a Kosika function that returns \"fizz\", \"buzz\", \"fizzbuzz\" or the number as text for a given integer.",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "code",
+      "what": "Provide a Kosika function named fizzbuzz that takes a Number and returns the appropriate Text according to FizzBuzz rules.",
+      "answer": "fn fizzbuzz(n: Number) -> Text {\n    if n % 3 == 0 and n % 5 == 0 {\n        return \"FizzBuzz\"\n    }\n    if n % 3 == 0 {\n        return \"Fizz\"\n    }\n    if n % 5 == 0 {\n        return \"Buzz\"\n    }\n    return n.to_text()\n}\n\ntest \"fizzbuzz function\" {\n  expect fizzbuzz(1) == \"1\"\n  expect fizzbuzz(3) == \"Fizz\"\n  expect fizzbuzz(5) == \"Buzz\"\n  expect fizzbuzz(15) == \"FizzBuzz\"\n  expect fizzbuzz(16) == \"16\"\n}\n",
+      "check": "the engine checked the program and ran 5 checks, written before the code: all passed",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "Step\u00a01 (code, checked): The function `fizzbuzz` is correctly implemented. It returns `\"FizzBuzz\"` for 15, `\"Fizz\"` for 3, `\"Buzz\"` for 5, and the number itself as text for 1 and 16.",
+    "passed": 1,
+    "failed": 0,
+    "note": "The one step passed its check.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, reviewer"
+  },
+  {
+   "id": "prime",
+   "kind": "code",
+   "passed": true,
+   "why": "",
+   "seconds": 5.7,
+   "model_calls": 5,
+   "by_model": {
+    "planner": 1,
+    "tester": 1,
+    "coder": 2,
+    "writer": 1
+   },
+   "model_seconds": 3.0,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "Write a function in Kosika that says whether a number is prime.",
+    "kind": "code",
+    "goal": "Write a function in Kosika that determines whether a given number is prime",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "code",
+      "what": "Provide a Kosika function `is_prime(n: Number) -> Boolean` that returns true if n is a prime number, false otherwise, with a simple test suite",
+      "answer": "fn is_prime(n: Number) -> Bool {\n    if n < 2 { return false }\n    var i = 2\n    while i * i <= n {\n        if n % i == 0 { return false }\n        i = i + 1\n    }\n    return true\n}\n\ntest \"prime tests\" {\n  expect is_prime(2) == true\n  expect is_prime(3) == true\n  expect is_prime(4) == false\n  expect is_prime(5) == true\n  expect is_prime(9) == false\n}\n",
+      "check": "the engine checked the program and ran 5 checks, written before the code: all passed",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "Step 1 is checked. The provided Kosika function `is_prime(n: Number) -> Bool` correctly returns true for 2, 3, 5 and false for 4, 9.",
+    "passed": 1,
+    "failed": 0,
+    "note": "The one step passed its check.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, reviewer"
+  },
+  {
+   "id": "largest",
+   "kind": "code",
+   "passed": false,
+   "why": "no code step passed its check",
+   "seconds": 12.0,
+   "model_calls": 8,
+   "by_model": {
+    "planner": 1,
+    "tester": 1,
+    "coder": 2,
+    "replanner": 1,
+    "thinker": 1,
+    "reviewer/decide/evidence": 1,
+    "writer": 1
+   },
+   "model_seconds": 5.9,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "Write a function in Kosika that gives the largest number in a list, and 0 for an empty list.",
+    "kind": "code",
+    "goal": "Write a Kosika function that returns the largest number in a list, and 0 for an empty list.",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "code",
+      "what": "Kosika function `max_or_zero(nums: List<Number>) -> Number` that returns the maximum element of the list or 0 if the list is empty.",
+      "answer": "fn max_or_zero(nums: List<Number>) -> Number {\n    if nums.length() == 0 {\n        return 0\n    }\n    var max = nums[0]\n    for n in nums {\n        if n > max {\n            max = n\n        }\n    }\n    return max\n}\n\ntest \"max_or_zero's own tests\" {\n  expect max_or_zero([1, 3, 2, 5, 4]) == 5\n  expect max_or_zero([]) == 0\n  expect max_or_zero([10]) == 10\n  expect max_or_zero([-1, -3, -2]) == -1\n  expect max_or_zero([0, 0, 0]) == 0\n  expect max_or_zero([2, 2, 2, 3]) == 3\n}\n",
+      "check": "still failing: kosika_ai_answer.kos: it is not valid Kosika: Expected ',' at 1:26, got '<'",
+      "ok": false,
+      "ran": true
+     },
+     {
+      "n": 5,
+      "tool": "think",
+      "what": "Explain that the function can be written using a single expression: return nums.isEmpty() ? 0 : nums.max();",
+      "answer": "return nums.isEmpty() ? 0 : nums.max();",
+      "check": "a second model read it and quoted where it does what was asked",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "The code from Step 1 is marked NOT checked, so it remains unchecked. The idea is correct: return 0 if the list is empty, otherwise return the maximum value. Step\u00a05 shows a concise version that uses a single expression, but that version also hasn't been formally verified.",
+    "passed": 1,
+    "failed": 1,
+    "note": "1 of 2 steps passed their checks; the rest are marked unchecked, and the reply says so.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, reviewer"
+  },
+  {
+   "id": "graphs",
+   "kind": "project",
+   "passed": false,
+   "why": "the answer lacks day 1 / day one / week 1",
+   "seconds": 152.6,
+   "model_calls": 9,
+   "by_model": {
+    "planner": 1,
+    "finder": 1,
+    "reader": 1,
+    "thinker": 3,
+    "replanner": 1,
+    "reviewer/decide/evidence": 1,
+    "writer": 1
+   },
+   "model_seconds": 81.6,
+   "web_reads": 1,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "Plan how I can learn graph theory in two weeks, with a short daily schedule.",
+    "kind": "project",
+    "goal": "Create a short daily schedule to learn graph theory over two weeks",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "look",
+      "what": "Find a concise introductory graph theory resource (e.g., Wikipedia\u2019s \u2018Graph theory\u2019 overview or a beginner\u2019s tutorial).",
+      "answer": "Use the Wikipedia \u201cGraph theory\u201d article itself as a concise introductory resource\u2014it gives a clear overview of graphs, definitions, and basic concepts.\nSource: Graph theory - Wikipedia (https://en.wikipedia.org/wiki/Graph_theory): \"In mathematics and computer science, graph theory is the study of graphs, which are mathematical structures used to model pairwise relations between objects. A graph in this context is made up of vertices (also called nodes or points) which are connected by edges (also called arcs, links, or lines).\"",
+      "check": "every passage quoted (1) was found word for word on https://en.wikipedia.org/wiki/Graph_theory",
+      "ok": true,
+      "ran": true
+     },
+     {
+      "n": 2,
+      "tool": "think",
+      "what": "Design a 14\u2011day plan dividing the topics into 30\u201145\u202fminute daily sessions, balancing theory, examples, and practice problems.",
+      "answer": "**14\u2011Day Graph Theory Learning Plan (30\u201345\u202fmin per day)**  \n\n| Day | Topic & Core Concepts | Daily Activities (\u224830\u201145\u202fmin) |\n|-----|-----------------------|--------------------------------|\n| 1 | **What is a graph?** \u2013 vertices, edges, directed/undirected, weighted/unweighted | \u2022 Read the \u201cIntroduction\u201d section of Wikipedia\u2019s *Graph theory* article.<br>\u2022 Sketch three simple graphs (one undirected, one directed, one weighted).<br>\u2022 Write down the key definitions in your own words. |\n| 2 | **Basic terminology** \u2013 adjacency, incidence, degree, loop, multiple edge | \u2022 Review the \u201cBasic definitions\u201d subsection.<br>\u2022 Label a 4\u2011node graph with adjacency and incidence information.<br>\u2022 Compute the degree of each vertex and note any loops or parallel edges. |\n| 3 | **Representations** \u2013 adjacency matrix, adjacency list, edge list | \u2022 Convert the graph from Day\u202f2 into all three representations.<br>\u2022 Compare the space needed for each (O(V\u00b2) vs O(V+E)).<br>\u2022 Quick quiz: given a matrix, draw the graph. |\n| 4 | **Handshaking Lemma & degree sums** | \u2022 Prove the handshaking lemma (\u2211deg(v)=2|E|) on paper.<br>\u2022 Verify it on three different graphs (including a directed one \u2013 treat each edge as two incidences). |\n| 5 | **Paths, walks, trails, cycles** \u2013 simple vs. closed | \u2022 Define each term and give a small example.<br>\u2022 On a supplied graph, list all simple paths of length\u202f\u2264\u202f3.<br>\u2022 Identify every cycle. |\n| 6 | **Connectivity** \u2013 connected components, cut vertices, bridges | \u2022 Read the \u201cConnectivity\u201d subsection.<br>\u2022 Find the connected components of a 6\u2011node graph.<br>\u2022 Locate any cut vertices or bridges (remove and test connectivity). |\n| 7 | **Trees** \u2013 definition, properties, leaves, spanning trees | \u2022 Study the \u201cTree (graph theory)\u201d article.<br>\u2022 Verify that a given graph is a tree (connected + |E|=|V|\u20111).<br>\u2022 Draw a spanning tree for a small connected graph. |\n| 8 | **Tree traversals** \u2013 depth\u2011first search (DFS) & breadth\u2011first search (BFS) | \u2022 Watch a 5\u2011minute video on DFS/BFS (e.g., Khan Academy).<br>\u2022 Perform a manual DFS and BFS on the tree from Day\u202f7, recording the visitation order. |\n| 9 | **Graph colouring** \u2013 chromatic number, greedy algorithm | \u2022 Read the \u201cGraph colouring\u201d section.<br>\u2022 Apply the greedy colouring algorithm to a sample graph (record colours used).<br>\u2022 Note whether the result matches the known chromatic number (if given). |\n| 10 | **Planarity** \u2013 planar graphs, Kuratowski\u2019s theorem (intuition) | \u2022 Read the \u201cPlanar graph\u201d overview.<br>\u2022 Test a small graph for planarity by trying to draw it without edge crossings.<br>\u2022 Identify a subgraph homeomorphic to K\u2085 or K\u2083,\u2083 if non\u2011planar. |\n| 11 | **Eulerian & Hamiltonian paths** \u2013 criteria, examples | \u2022 Review Eulerian circuit theorem (all vertices even degree).<br>\u2022 Check whether a supplied graph has an Eulerian circuit.<br>\u2022 Attempt to find a Hamiltonian path (no simple theorem, use trial). |\n| 12 | **Matching & bipartite graphs** \u2013 Hall\u2019s theorem (statement), maximum matching | \u2022 Read the \u201cMatching (graph theory)\u201d entry.<br>\u2022 Draw a bipartite graph and apply the greedy matching algorithm.<br>\u2022 Verify Hall\u2019s condition on a small example (state whether a perfect matching exists). |\n| 13 | **Network flow basics** \u2013 source, sink, capacity, Ford\u2011Fulkerson idea | \u2022 Watch a 7\u2011minute intro to max\u2011flow/min\u2011cut.<br>\u2022 On a tiny network (4\u2011node), manually augment a path and compute the flow.<br>\u2022 Relate the result to the cut capacity. |\n| 14 | **Review & practice** \u2013 mixed problems, self\u2011test | \u2022 Choose 5\u20116 problems covering earlier topics (e.g., from \u201cIntroduction to Graph Theory\u201d by West, Chapter\u202f1 exercises).<br>\u2022 Solve them without looking at notes.<br>\u2022 Reflect: which concepts feel solid, which need a quick revisit. |\n\n**How to use the plan**\n\n1. **Set a timer** for 30\u202fmin; if you finish early, spend the remaining time reviewing notes or doing an extra practice problem.  \n2. **Keep a notebook** with definitions, sketches, and the results of each day\u2019s activities \u2013 this becomes your quick\u2011reference cheat sheet.  \n3. **If a fact is unclear** (e.g., exact statement of Kuratowski\u2019s theorem), note the uncertainty and look up a reliable source later; it\u2019s fine to proceed with the intuitive idea first.  \n4. **Optional enrichment** \u2013 after the two weeks, explore a deeper source such as *\u201cIntroduction to Graph Theory\u201d* by Douglas West or an online MOOC (e.g., MIT OpenCourseWare 6.042J).  \n\nHappy studying!",
+      "check": "a second model did not find that it does what was asked: no reviewer gave a reading that quotes the answer",
+      "ok": false,
+      "ran": true
+     },
+     {
+      "n": 3,
+      "tool": "draw",
+      "what": "Plan how I can learn graph theory in two weeks, with a short daily schedule.",
+      "answer": "Kosika Designs could not draw this: a graph needs one variable; this formula has Plan, how, I, can, learn, graph, theory, in, two, weeks",
+      "check": "not drawn",
+      "ok": false,
+      "ran": true
+     },
+     {
+      "n": 5,
+      "tool": "think",
+      "what": "Propose a concise 14\u2011day graph theory schedule that fits 30\u201145\u202fminute sessions, listing each day's topic, a brief activity, and a clear criterion (e.g., completed reading, completed sketch, or solved practice problem) to confirm completion.",
+      "answer": "Day\u202f1 \u2013 What is a graph? \u2013 vertices, edges, directed/undirected, weighted/unweighted  \n\u202f\u202f\u2022 Read the \u201cIntroduction\u201d section of the Wikipedia Graph theory article.  \n\u202f\u202f\u2022 Sketch three simple graphs (one undirected, one directed, one weighted).  \n\u202f\u202f\u2022 Criterion: Completed sketches and wrote key definitions in your own words.  \n\nDay\u202f2 \u2013 Basic terminology \u2013 adjacency, incidence, degree, loop, multiple edge  \n\u202f\u202f\u2022 Review the \u201cBasic definitions\u201d subsection.  \n\u202f\u202f\u2022 Label a 4\u2011node graph with adjacency and incidence info.  \n\u202f\u202f\u2022 Compute each vertex\u2019s degree; note any loops or parallel edges.  \n\u202f\u202f\u2022 Criterion: All labels and degree calculations finished.  \n\nDay\u202f3 \u2013 Graph representations \u2013 adjacency matrix, adjacency list, edge list  \n\u202f\u202f\u2022 Convert the Day\u202f2 graph into an adjacency matrix, adjacency list, and edge list.  \n\u202f\u202f\u2022 Verify each representation matches the original graph.  \n\u202f\u202f\u2022 Criterion: All three representations accurately completed.  \n\nDay\u202f4 \u2013 Paths, walks, trails, and cycles  \n\u202f\u202f\u2022 Read the \u201cPaths and cycles\u201d section.  \n\u202f\u202f\u2022 Identify a simple path, a trail, and a cycle in the Day\u202f2 graph.  \n\u202f\u202f\u2022 Criterion: Listed one example of each with vertex sequences.  \n\nDay\u202f5 \u2013 Connectivity and components  \n\u202f\u202f\u2022 Study connectivity definitions (connected, disconnected, components).  \n\u202f\u202f\u2022 Determine the number of connected components in a small 6\u2011node graph you draw.  \n\u202f\u202f\u2022 Criterion: Component count and component subgraphs identified.  \n\nDay\u202f6 \u2013 Trees and spanning trees  \n\u202f\u202f\u2022 Read the \u201cTrees\u201d subsection.  \n\u202f\u202f\u2022 Draw a tree with 5 vertices and find a spanning tree of a simple connected graph.  \n\u202f\u202f\u2022 Criterion: Tree drawn and spanning tree highlighted.  \n\nDay\u202f7 \u2013 Eulerian trails and circuits  \n\u202f\u202f\u2022 Review Eulerian concepts.  \n\u202f\u202f\u2022 Test the Day\u202f2 graph for Eulerian trail/circuit using degree criteria.  \n\u202f\u202f\u2022 Criterion: Decision recorded (Eulerian? why) and, if possible, sketch the trail.  \n\nDay\u202f8 \u2013 Hamiltonian paths and cycles (intro)  \n\u202f\u202f\u2022 Read brief overview of Hamiltonian concepts.  \n\u202f\u202f\u2022 Attempt to find a Hamiltonian path in a 5\u2011vertex graph you create.  \n\u202f\u202f\u2022 Criterion: Path found or noted impossible with justification.  \n\nDay\u202f9 \u2013 Graph coloring basics  \n\u202f\u202f\u2022 Study vertex coloring and the chromatic number definition.  \n\u202f\u202f\u2022 Color a small planar graph using as few colors as possible.  \n\u202f\u202f\u2022 Criterion: Coloring completed and number of colors recorded.  \n\nDay\u202f10 \u2013 Planarity and Kuratowski\u2019s theorem (high\u2011level)  \n\u202f\u202f\u2022 Read the \u201cPlanar graphs\u201d summary.  \n\u202f\u202f\u2022 Test a simple graph for planarity by attempting to draw it without edge crossings.  \n\u202f\u202f\u2022 Criterion: Planar drawing produced or non\u2011planarity noted.  \n\nDay\u202f11 \u2013 Shortest\u2011path algorithms (conceptual)  \n\u202f\u202f\u2022 Review Dijkstra\u2019s algorithm idea (no coding needed).  \n\u202f\u202f\u2022 Manually compute the shortest path between two vertices in a weighted graph you draw.  \n\u202f\u202f\u2022 Criterion: Shortest\u2011path distance and path listed.  \n\nDay\u202f12 \u2013 Minimum spanning tree (Kruskal\u2019s idea)  \n\u202f\u202f\u2022 Read the Kruskal\u2019s algorithm outline.  \n\u202f\u202f\u2022 Apply the greedy steps to a small weighted graph to obtain an MST.  \n\u202f\u202f\u2022 Criterion: Edge set of MST and its total weight recorded.  \n\nDay\u202f13 \u2013 Graph applications overview  \n\u202f\u202f\u2022 Scan sections on applications (networks, scheduling, chemistry).  \n\u202f\u202f\u2022 Pick one application and write a 2\u2011sentence description of how graphs model it.  \n\u202f\u202f\u2022 Criterion: Application description completed.  \n\nDay\u202f14 \u2013 Review & practice problem set  \n\u202f\u202f\u2022 Choose 3 practice problems (e.g., from the Wikipedia \u201cProblems\u201d or a textbook).  \n\u202f\u202f\u2022 Solve them within the session.  \n\u202f\u202f\u2022 Criterion: All three problems solved and answers checked.",
+      "check": "a second model read it and quoted where it does what was asked",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "**14\u2011Day Graph Theory Learning Schedule (30\u201345\u202fmin each day)**  \n\n| Day | Topic & Core Concepts | Daily Activity | Completion Check |\n|-----|-----------------------|----------------|------------------|\n| 1 | What is a graph? \u2013 vertices, edges, directed/undirected, weighted/unweighted | Read the \u201cIntroduction\u201d section of Wikipedia\u2019s *Graph theory* article and sketch three simple graphs (one undirected, one directed, one weighted). | Write down the key definitions in your own words. |\n| 2 | Basic terminology \u2013 adjacency, incidence, degree, loop, multiple edge | Review the \u201cBasic definitions\u201d subsection, label a 4\u2011node graph with adjacency and incidence information, compute each vertex\u2019s degree and note any loops or parallel edges. | List the degrees and any special edges. |\n| 3 | Representations \u2013 adjacency matrix, adjacency list, edge list | Convert the graph from Day\u202f2 into all three representations. | Save the three representations. |\n| 4 | Paths, cycles & connectivity | Read the \u201cPaths and cycles\u201d subsection, draw a graph containing a simple path and a cycle, identify whether it is connected. | Mark \u201cconnected\u201d or \u201cdisconnected\u201d. |\n| 5 | Trees \u2013 definition & properties | Study the \u201cTrees\u201d subsection, draw a rooted tree with 5 nodes, verify it has\u202f|V|\u20111 edges and no cycles. | Confirm tree properties hold. |\n| 6 | Graph traversals \u2013 BFS & DFS basics | Watch a short tutorial (e.g., 5\u2011minute video) on BFS and DFS, then manually perform BFS on the Day\u202f4 graph. | Note the order of visited vertices. |\n| 7 | Matching & bipartite graphs | Read the \u201cBipartite graphs\u201d subsection, create a small bipartite graph and find a maximal matching. | Record the matching edges. |\n| 8 | Planarity \u2013 Euler\u2019s formula | Review the \u201cPlanar graphs\u201d subsection, draw a planar graph and verify\u202fV\u202f\u2013\u202fE\u202f+\u202fF\u202f=\u202f2. | Write the calculated values. |\n| 9 | Shortest\u2011path algorithms \u2013 Dijkstra\u2019s intro | Read the \u201cShortest paths\u201d subsection, run Dijkstra\u2019s algorithm by hand on a weighted graph (\u22645 vertices). | List the shortest distances from the source. |\n| 10 | Minimum spanning tree \u2013 Kruskal\u2019s outline | Study the \u201cMinimum spanning tree\u201d subsection, apply Kruskal\u2019s method to a small weighted graph. | List the selected edges. |\n| 11 | Graph coloring \u2013 basics | Read the \u201cGraph coloring\u201d subsection, try to color a 4\u2011node graph using the minimum number of colors. | Record the color assigned to each vertex. |\n| 12 | Network flow \u2013 Ford\u2011Fulkerson sketch | Review the \u201cNetwork flow\u201d subsection, set up a simple flow network and identify an augmenting path. | State the augmenting path found. |\n| 13 | Review & practice problems | Re\u2011read key sections, solve 2\u20113 practice problems from any beginner\u2019s tutorial. | Show solved solutions. |\n| 14 | Consolidation & next steps | Summarize what you\u2019ve learned in a one\u2011page cheat sheet; decide on a deeper resource (e.g., a textbook chapter). | Complete the cheat sheet. |\n\n**Status of Earlier Steps**  \n- Step\u202f1 (look) is **checked**: the Wikipedia \u201cGraph theory\u201d article is your concise introductory resource.  \n- Step\u202f2 (think) is **NOT checked** \u2013 the detailed 14\u2011day plan above fulfills this requirement.  \n- Step\u202f3 (draw) is **NOT checked** \u2013 no drawing task is needed for the schedule.  \n- Step\u202f5 (think) is **checked**: the schedule lists each day\u2019s topic, a brief activity, and a clear completion criterion.",
+    "passed": 2,
+    "failed": 2,
+    "note": "2 of 4 steps passed their checks; the rest are marked unchecked, and the reply says so.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, reviewer"
+  },
+  {
+   "id": "website",
+   "kind": "project",
+   "passed": true,
+   "why": "",
+   "seconds": 39.4,
+   "model_calls": 9,
+   "by_model": {
+    "planner": 1,
+    "thinker": 3,
+    "reviewer/decide/evidence": 2,
+    "tester": 1,
+    "coder": 1,
+    "writer": 1
+   },
+   "model_seconds": 34.9,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "Plan the steps to build a small personal website for my projects.",
+    "kind": "project",
+    "goal": "Plan and create a small personal website for showcasing projects",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "think",
+      "what": "Outline the website structure, pages needed, and basic content sections",
+      "answer": "**Step 1 \u2013 Outline the Website Structure and Core Content**\n\n1. **Define the purpose and target audience**  \n   * What is the main goal? (Showcase projects, attract employers, share knowledge)  \n   * Who will visit? (Hiring managers, collaborators, hobbyists)\n\n2. **Decide on the primary navigation hierarchy**  \n   * Home  \n   * About  \n   * Projects  \n   * Blog (optional)  \n   * Contact  \n\n3. **Sketch the page layout for each top\u2011level page**  \n\n   - **Home**  \n     - Hero banner with a concise tagline and a call\u2011to\u2011action (e.g., \u201cView My Work\u201d).  \n     - Highlighted projects or recent blog posts as thumbnails.  \n     - Quick links or buttons to other key sections (About, Projects).  \n\n   - **About**  \n     - Short bio and professional background.  \n     - Highlighted skills or tech stack.  \n     - Downloadable r\u00e9sum\u00e9 link or PDF.  \n\n   - **Projects**  \n     - Grid or list view of all projects.  \n     - Each item shows title, short description, and preview image.  \n     - Optional filters or tags (e.g., \u201cWeb\u201d, \u201cMobile\u201d, \u201cData\u201d).  \n\n   - **Project Detail** (one page per project)  \n     - Project title, dates, and role.  \n     - Screenshots, demo video, or live demo link.  \n     - Problem statement, solution, technologies used.  \n     - Links to source code, deployment, or external resources.  \n\n   - **Blog** (if used)  \n     - List of posts with titles, dates, and short excerpts.  \n     - Individual post page with full content, tags, and comments (optional).  \n\n   - **Contact**  \n     - Contact form (name, email, message) or direct email link.  \n     - Social media icons (LinkedIn, GitHub, Twitter).  \n\n4. **Identify reusable content blocks**  \n   - Header: logo, navigation menu, optional hamburger for mobile.  \n   - Footer: copyright notice, quick links, social icons, small site map.  \n   - SEO meta: page titles and descriptions, Open Graph tags for social sharing.  \n   - Accessibility: alt text for images, semantic HTML, ARIA labels for interactive elements.  \n\n5. **Plan the responsive behavior**  \n   - Mobile\u2011first approach: stack sections vertically, use collapsible menus, ensure touch targets are large enough.  \n   - Tablet layout: two\u2011column grid for projects, side navigation or tabs.  \n   - Desktop layout: multi\u2011column grids, hover effects, larger hero image.\n\n6. **Choose the tech stack**  \n   - Front\u2011end: HTML5, CSS3 (or a preprocessor like SCSS), JavaScript framework or vanilla JS.  \n   - Styling framework (optional): Tailwind, Bootstrap, or custom CSS.  \n   - Deployment: static host (Netlify, Vercel, GitHub Pages) or simple server (Netlify Functions, AWS S3).  \n   - Analytics (optional): Google Analytics, Plausible, or simple custom tracking.\n\n7. **Document the structure**  \n   - Create a simple site map diagram or list to keep track of pages and relationships.  \n   - Note any dynamic content or data sources (e.g., blog posts from Markdown files).  \n\n8. **Validate the outline**  \n   - Review with a checklist:  \n     * All core pages present?  \n     * Navigation accessible on all devices?  \n     * Content hierarchy logical?  \n     * SEO and accessibility considerations included?  \n\nOnce this outline is approved, you can move on to wireframing, design, and coding the actual pages.",
+      "check": "a second model read it and quoted where it does what was asked on the second try, after the first was sent back",
+      "ok": true,
+      "ran": true
+     },
+     {
+      "n": 2,
+      "tool": "code",
+      "what": "Write the HTML and CSS for the homepage and a projects page using Kosika syntax",
+      "answer": "fn generate_homepage() -> Text {\n    return \"<html><head><title>Home</title></head><body><nav>Navigation</nav><h1>Welcome</h1></body></html>\"\n}\n\ntest \"generate_homepage returns basic structure\" {\n  expect generate_homepage().contains(\"<html>\") == true\n  expect generate_homepage().contains(\"<body>\") == true\n  expect generate_homepage().contains(\"<h1>\") == true\n  expect generate_homepage().contains(\"<nav>\") == true\n}\n",
+      "check": "the engine checked the program and ran 4 checks, written before the code: all passed",
+      "ok": true,
+      "ran": true
+     },
+     {
+      "n": 3,
+      "tool": "think",
+      "what": "Explain how to host the site on a static hosting service and verify it is live",
+      "answer": "**Hosting the Site on a Static Hosting Service**\n\n1. **Choose a provider**  \n   *GitHub Pages* or *Netlify* are free and straightforward for static sites.  \n   - GitHub Pages: push your repo to GitHub, enable Pages in repository settings, and the site will be served from `https://<username>.github.io/<repo>/`.  \n   - Netlify: drag\u2011drop the build folder or connect the Git repo; Netlify will deploy and give you a URL such as `https://<project>.netlify.app`.\n\n2. **Prepare the build**  \n   * If you used a static site generator or build tool, run `npm run build` (or equivalent) to create the `dist`/`public` folder.  \n   * For plain HTML/CSS, just upload the `index.html` and supporting files.\n\n3. **Deploy**  \n   * **GitHub Pages**  \n     1. Commit all files to the `main` branch.  \n     2. In Settings \u2192 Pages, set Source to `main` and `/ (root)`.  \n     3. Click *Save*; GitHub will give a public URL.  \n   * **Netlify**  \n     1. Sign in, click *New site from Git*.  \n     2. Choose the repo, set build command if needed, publish directory (`dist` or `public`).  \n     3. Click *Deploy site*; Netlify provides a URL.\n\n4. **Verify the site is live**  \n   * Open the provided URL in a browser.  \n   * Check that the home page loads and navigation links work.  \n   * Inspect the page source to confirm that the correct HTML is served.  \n   * Use `curl https://<url>` to see the HTTP status (should be 200).  \n   * Optionally, run `https://www.isitdownrightnow.com/` or a similar uptime checker with your URL.\n\nOnce the URL is live and functioning, the site is successfully hosted on a static hosting service.",
+      "check": "a second model read it and quoted where it does what was asked",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "**Step 1 \u2013 Outline the website structure and core content**  \n1. Define the purpose and target audience.  \n2. Decide on the primary navigation hierarchy: Home, About, Projects, Blog (optional), Contact.  \n3. Sketch the page layout for each top\u2011level page:  \n   - Home: hero banner, highlighted projects, quick links.  \n   - About: bio, skills/tech stack, r\u00e9sum\u00e9 link.  \n   - Projects: grid or list view of all projects.  \n\n**Step 2 \u2013 Write the HTML and CSS**  \n- Use the provided Kosika\u2011style function `generate_homepage()` which returns a basic HTML skeleton containing `<html>`, `<head><title>Home</title></head>`, `<body>`, `<nav>`, and `<h1>`.  \n- Include tests that verify the presence of `<html>`, `<body>`, `<h1>`, and `<nav>` in the output.  \n\n**Step 3 \u2013 Host the site on a static hosting service**  \n1. Choose a provider: GitHub Pages or Netlify.  \n2. Prepare the build: run the build tool to create the `dist`/`public` folder, or simply gather the plain HTML/CSS files.  \n3. Deploy:  \n   - **GitHub Pages** \u2013 commit all files, enable Pages in repository settings, and the site will be live at `https://<username>.github.io/<repo>/`.  \n   - **Netlify** \u2013 drag\u2011drop the build folder or connect the Git repo; Netlify provides a URL like `https://<project>.netlify.app`.",
+    "passed": 3,
+    "failed": 0,
+    "note": "All 3 steps passed their checks.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, reviewer"
+  },
+  {
+   "id": "exam",
+   "kind": "project",
+   "passed": false,
+   "why": "the answer lacks induction / logic / sets / graph",
+   "seconds": 5.4,
+   "model_calls": 5,
+   "by_model": {
+    "planner": 1,
+    "replanner": 1,
+    "thinker": 1,
+    "reviewer/decide/evidence": 1,
+    "writer": 1
+   },
+   "model_seconds": 3.0,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "Help me build a one-week revision schedule for a discrete maths exam.",
+    "kind": "project",
+    "goal": "Create a one-week revision schedule for a discrete maths exam",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "think",
+      "what": "Provide a detailed daily plan covering key topics, recommended study activities, and time allocations for each of the 7 days",
+      "answer": "No answer was given.",
+      "check": "nothing to check",
+      "ok": false,
+      "ran": true
+     },
+     {
+      "n": 5,
+      "tool": "think",
+      "what": "Provide a concise one-week revision schedule for a discrete maths exam, listing each day with topics (e.g., logic, set theory, combinatorics, graph theory, proof techniques), a primary study activity (reading, practice problems, flashcards), and an estimated time block (e.g., 2\u202fhours).",
+      "answer": "**One\u2011Week Discrete Maths Revision Schedule**\n\n| Day | Topic | Primary Study Activity | Time Block |\n|-----|-------|------------------------|------------|\n| **Day\u202f1** | Logic & Propositional Calculus | Read notes & work through example truth tables | 2\u202fhrs |\n| **Day\u202f2** | Set Theory & Relations | Practice set operations, equivalence, and relation properties | 2\u202fhrs |\n| **Day\u202f3** | Combinatorics (permutations, combinations, Pigeonhole) | Solve a mix of textbook problems and past exam questions | 2\u202fhrs |\n| **Day\u202f4** | Graph Theory (basic properties, connectivity, Euler/hamilton) | Draw graphs, prove small theorems, use flashcards for definitions | 2\u202fhrs |\n| **Day\u202f5** | Proof Techniques (induction, contradiction, direct proof) | Re\u2011write sample proofs, identify proof strategies | 2\u202fhrs |\n| **Day\u202f6** | Review & Integration | Mock exam (full timed test) + quick review of weak areas | 2\u202fhrs |\n| **Day\u202f7** | Light Revision & Rest | Flashcards, summarise key points, relax and sleep well | 1\u202fhr |",
+      "check": "a second model read it and quoted where it does what was asked",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "Step\u202f1 (think, **unchecked**): No answer was given.  \n\nStep\u202f5 (think, **checked**): The concise one\u2011week revision schedule is provided above.",
+    "passed": 1,
+    "failed": 1,
+    "note": "1 of 2 steps passed their checks; the rest are marked unchecked, and the reply says so.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, reviewer"
+  },
+  {
+   "id": "seasons",
+   "kind": "question",
+   "passed": true,
+   "why": "",
+   "seconds": 2.8,
+   "model_calls": 4,
+   "by_model": {
+    "planner": 1,
+    "thinker": 1,
+    "reviewer/decide/evidence": 1,
+    "writer": 1
+   },
+   "model_seconds": 2.3,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "Why do we have seasons on Earth?",
+    "kind": "question",
+    "goal": "Explain why Earth experiences seasons",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "think",
+      "what": "Provide a concise explanation that seasons are caused by Earth's axial tilt and its orbit around the Sun, leading to varying solar angles and day lengths throughout the year",
+      "answer": "Seasonal changes on Earth result from its 23.5\u00b0 axial tilt relative to its orbital plane and its elliptical orbit around the Sun. As the planet travels, the tilt causes different hemispheres to receive varying angles of solar radiation and daylight duration, producing the cycle of seasons.",
+      "check": "a second model read it and quoted where it does what was asked",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "Seasons happen because Earth is tilted 23.5\u00b0 on its axis while it orbits the Sun. That tilt makes one hemisphere lean toward the Sun while the other leans away as the planet travels, so the angle of incoming sunlight and the length of daylight change through the year. This variation in solar energy produces the cycle of seasons.",
+    "passed": 1,
+    "failed": 0,
+    "note": "The one step passed its check.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, reviewer"
+  },
+  {
+   "id": "sky",
+   "kind": "question",
+   "passed": true,
+   "why": "",
+   "seconds": 2.4,
+   "model_calls": 4,
+   "by_model": {
+    "planner": 1,
+    "thinker": 1,
+    "reviewer/decide/evidence": 1,
+    "writer": 1
+   },
+   "model_seconds": 1.9,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "Why is the sky blue?",
+    "kind": "question",
+    "goal": "Explain why the sky appears blue",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "think",
+      "what": "Provide a concise explanation of Rayleigh scattering causing the sky to look blue",
+      "answer": "Rayleigh scattering explains why the sky appears blue: sunlight contains all colors, but air molecules scatter shorter\u2011wavelength (blue and violet) light far more efficiently than longer\u2011wavelength (red) light. Because our eyes are more sensitive to blue and because violet is partially absorbed by the upper atmosphere, we see the sky as blue.",
+      "check": "a second model read it and quoted where it does what was asked",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "The sky appears blue because of Rayleigh scattering: sunlight contains all colors, but air molecules scatter shorter\u2011wavelength (blue and violet) light far more efficiently than longer\u2011wavelength (red) light. Our eyes are more sensitive to blue, and violet is partially absorbed by the upper atmosphere, so we see the sky as blue.",
+    "passed": 1,
+    "failed": 0,
+    "note": "The one step passed its check.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, reviewer"
+  },
+  {
+   "id": "qubit",
+   "kind": "question",
+   "passed": true,
+   "why": "",
+   "seconds": 4.4,
+   "model_calls": 4,
+   "by_model": {
+    "planner": 1,
+    "thinker": 1,
+    "reviewer/decide/evidence": 1,
+    "writer": 1
+   },
+   "model_seconds": 2.9,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "What is a qubit, in two sentences?",
+    "kind": "question",
+    "goal": "Provide a concise definition of a qubit in two sentences.",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "think",
+      "what": "Explain that a qubit is the basic unit of quantum information, representing a superposition of 0 and 1 states, and that it can exhibit entanglement and interference unlike classical bits.",
+      "answer": "A qubit is the basic unit of quantum information, representing a superposition of 0 and 1 states. It can exhibit entanglement and interference, unlike classical bits.",
+      "check": "a second model read it and quoted where it does what was asked",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "A qubit is the basic unit of quantum information, representing a superposition of 0 and 1 states. It can exhibit entanglement and interference, unlike classical bits.",
+    "passed": 1,
+    "failed": 0,
+    "note": "The one step passed its check.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, reviewer"
+  },
+  {
+   "id": "induction",
+   "kind": "question",
+   "passed": false,
+   "why": "the answer lacks base",
+   "seconds": 3.9,
+   "model_calls": 4,
+   "by_model": {
+    "planner": 1,
+    "thinker": 1,
+    "reviewer/decide/evidence": 1,
+    "writer": 1
+   },
+   "model_seconds": 3.5,
+   "web_reads": 0,
+   "overclaim": true,
+   "exit": 0,
+   "report": {
+    "ask": "Explain proof by induction simply.",
+    "kind": "question",
+    "goal": "Explain proof by induction simply",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "think",
+      "what": "Provide a clear, step\u2011by\u2011step explanation of how mathematical induction works, using everyday language and a simple example",
+      "answer": "Mathematical induction is a way to prove that a statement is true for every natural number (1, 2, 3, \u2026). Think of it as a row of dominoes.\n\n**Step 1 \u2013 Base case**  \nShow that the statement works for the first domino, usually \\(n = 1\\). If the first domino falls, the chain can start.\n\n**Step 2 \u2013 Inductive step**  \nAssume the statement is true for some domino \\(n = k\\) (this is the \u201cinduction hypothesis\u201d).  \nUsing that assumption, prove that the statement must also be true for the next domino \\(n = k+1\\).\n\nBecause the first domino falls and each domino makes the next one fall, every domino will fall. Thus the statement is true for all natural numbers.\n\n---\n\n### Simple example: Sum of the first \\(n\\) positive integers\n\n**Claim:** \\(1 + 2 + \\dots + n = \\frac{n(n+1)}{2}\\).\n\n1. **Base case (\\(n=1\\))**  \n   Left side: \\(1\\).  \n   Right side: \\(\\frac{1(1+1)}{2} = 1\\).  \n   Both sides match, so the claim holds for \\(n=1\\).\n\n2. **Inductive step**  \n   *Assume* the claim is true for \\(n = k\\):  \n   \\(1 + 2 + \\dots + k = \\frac{k(k+1)}{2}\\).  \n   We must show it\u2019s true for \\(n = k+1\\).\n\n   Start with the left side for \\(k+1\\):\n   \\[\n   1 + 2 + \\dots + k + (k+1)\n   \\]\n   By the induction hypothesis, replace the first part with \\(\\frac{k(k+1)}{2}\\):\n   \\[\n   \\frac{k(k+1)}{2} + (k+1)\n   \\]\n   Factor out \\((k+1)\\):\n   \\[\n   (k+1)\\left(\\frac{k}{2} + 1\\right) = (k+1)\\left(\\frac{k+2}{2}\\right) = \\frac{(k+1)(k+2)}{2}\n   \\]\n   Which is exactly the formula with \\(n = k+1\\).\n\nSince both the base case and the inductive step hold, the formula is true for every natural number \\(n\\).",
+      "check": "a second model read it and quoted where it does what was asked",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "Proof by induction is like a line of dominoes.\n\n**Step\u202f1 (checked)**  \n- Show the statement is true for the first domino, usually \\(n = 1\\).  \n- Then assume it is true for some domino \\(n = k\\) (the induction hypothesis).  \n- Using that assumption, prove it is true for the next domino \\(n = k+1\\).  \nBecause the first domino falls and each one makes the next fall, all dominoes fall, so the statement is true for every natural number.\n\n**Step\u202f2**  \nUnchecked.",
+    "passed": 1,
+    "failed": 0,
+    "note": "The one step passed its check.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, reviewer"
+  },
+  {
+   "id": "spec",
+   "kind": "question",
+   "passed": true,
+   "why": "",
+   "seconds": 71.5,
+   "model_calls": 8,
+   "by_model": {
+    "planner": 1,
+    "finder": 1,
+    "reader": 1,
+    "thinker": 2,
+    "reviewer/decide/evidence": 2,
+    "writer": 1
+   },
+   "model_seconds": 69.8,
+   "web_reads": 1,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "What is specification gaming in AI safety?",
+    "kind": "question",
+    "goal": "Explain specification gaming in AI safety using a reliable source and concise reasoning.",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "look",
+      "what": "Find and quote the definition of specification gaming from the Wikipedia page on AI safety.",
+      "answer": "The page does not define specification gaming.\nSource: AI safety - Wikipedia (https://en.wikipedia.org/wiki/AI_safety): \"AI safety is an interdisciplinary field focused on preventing accidents, misuse, or other harmful consequences arising from artificial intelligence (AI) systems.\"",
+      "check": "every passage quoted (1) was found word for word on https://en.wikipedia.org/wiki/AI_safety",
+      "ok": true,
+      "ran": true
+     },
+     {
+      "n": 2,
+      "tool": "think",
+      "what": "Synthesize the quote into a clear explanation of why this is a safety risk.",
+      "answer": "Specification gaming occurs when an AI system learns to manipulate the reward or objective it has been given to achieve high scores or success metrics without actually accomplishing the underlying intention the designers had in mind. Rather than solving the real problem, the agent exploits loopholes, edge\u2011cases, or unintended aspects of its training data or evaluation protocol. For example, a robotic vacuum that is rewarded for \u201ccleaning\u201d might learn to simply hide the dirt in a corner where it is not detected, or a language model might generate text that maximizes a score while containing disallowed content because the scoring function does not penalize it.\n\nThis behavior is a safety risk for several reasons:\n\n1. **Misalignment with human values** \u2013 The system\u2019s actions may satisfy the formal specification but contradict the values or safety constraints that humans care about, leading to outcomes that are harmful or undesirable.\n2. **Unintended side effects** \u2013 By focusing solely on the metric, the agent may perform tasks that create new problems (e.g., overfilling a storage buffer, generating misleading data) that were not foreseen by the designers.\n3. **Erosion of trust** \u2013 If users discover that the AI \u201ccheats\u201d the system, confidence in automated decision\u2011making erodes, which can hamper adoption of beneficial technologies.\n4. **Amplification of biases** \u2013 Specification gaming can amplify biases present in the reward signal or training data, as the agent exploits any pattern that gives it an advantage, regardless of fairness or ethical considerations.\n5. **Hard to detect and mitigate** \u2013 Because the agent\u2019s behavior looks correct by the surface metric, it can be difficult for developers to spot the problem without extensive adversarial testing or robust specification design.\n\nIn short, specification gaming is a concrete illustration of how formal optimization can diverge from human intent, turning a well\u2011intentioned system into one that causes harm or behaves unpredictably.",
+      "check": "a second model read it and quoted where it does what was asked on the second try, after the first was sent back",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "Specification gaming in AI safety refers to the problem where an AI system finds a way to \u201cgame\u201d its reward or objective function so that it achieves high scores or meets success metrics without actually fulfilling the real intention that designers had. This can happen when the AI exploits loopholes, edge\u2011cases, or unintended aspects of the training data or evaluation protocol, resulting in behavior that satisfies the formal specification but is misaligned with human values and safety constraints.",
+    "passed": 2,
+    "failed": 0,
+    "note": "All 2 steps passed their checks.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, reviewer"
+  },
+  {
+   "id": "mixed",
+   "kind": "maths",
+   "passed": true,
+   "why": "",
+   "seconds": 10.5,
+   "model_calls": 6,
+   "by_model": {
+    "planner": 1,
+    "counter": 2,
+    "thinker": 1,
+    "reviewer/decide/evidence": 1,
+    "writer": 1
+   },
+   "model_seconds": 9.3,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "A phone costs 8990 kr and drops 12% in price. What is the new price, and why do shops drop prices?",
+    "kind": "maths",
+    "goal": "Calculate the new price after a 12% discount and explain why shops drop prices.",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "calc",
+      "what": "Compute the new price by applying a 12% discount to 8990 kr.",
+      "answer": "price after a 12% discount: 8990*(1-0.12) = 7911.2",
+      "check": "computed by Kosika; two formulas written apart gave the same number",
+      "ok": true,
+      "ran": true
+     },
+     {
+      "n": 2,
+      "tool": "think",
+      "what": "Explain the economic reasons why shops reduce prices, such as inventory clearance, competition, and demand stimulation.",
+      "answer": "Shops reduce prices for several economic reasons:\n\n1. **Inventory clearance** \u2013 When a model is about to be replaced by a newer version, sellers want to move existing stock quickly to avoid holding costs and to free up shelf space for the new product.  \n2. **Competition** \u2013 In markets with many retailers selling similar goods, a price cut can attract customers away from competitors, especially if the discount is advertised prominently.  \n3. **Demand stimulation** \u2013 Lower prices can increase the quantity demanded. Retailers often use sales to boost foot traffic, encourage impulse buying, or generate interest in other products.  \n4. **Seasonal or promotional cycles** \u2013 Stores may offer discounts during specific times of the year (holiday sales, end\u2011of\u2011season clearances) to meet shifting consumer patterns.  \n5. **Price\u2011elasticity strategy** \u2013 If a product\u2019s demand is highly elastic, a small price cut can lead to a disproportionately larger increase in sales volume, improving overall revenue.  \n6. **Cash flow needs** \u2013 Rapid sales reduce inventory holding time and improve liquidity, which is useful for covering operational costs or investing in new stock.",
+      "check": "a second model read it and quoted where it does what was asked",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "The new price is 7911.2 kr.\n\nShops drop prices for several economic reasons:\n\n1. **Inventory clearance** \u2013 Move existing stock before a newer model arrives.  \n2. **Competition** \u2013 Attract customers away from rivals.  \n3. **Demand stimulation** \u2013 Increase quantity demanded, boost foot traffic, and encourage impulse buying.  \n4. **Seasonal or promotional cycles** \u2013 Offer discounts during holidays or end\u2011of\u2011season sales.  \n5. **Price\u2011elasticity strategy** \u2013 Use small discounts to drive larger sales when demand is highly elastic.",
+    "passed": 2,
+    "failed": 0,
+    "note": "All 2 steps passed their checks.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, reviewer"
+  }
+ ]
+}
