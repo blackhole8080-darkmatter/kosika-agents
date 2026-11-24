@@ -81,6 +81,18 @@ record Looked { w: Work page: Page }
 record Lesson { ask: Text kind: Text plan: Text answer: Text verdict: Text }
 memory lessons of Lesson
 
+// What Kosika has read, kept so it is used again (run with --memory FOLDER).
+// A page is fetched once: the next step that needs it reads it here.
+record Source { url: Text title: Text topic: Text text: Text }
+memory sources of Source
+// An answer that stood on a page, with the passage found there word for
+// word. Later steps are shown these, so they build on what was checked.
+record Fact { topic: Text answer: Text quote: Text url: Text title: Text }
+memory facts of Fact
+// A whole report whose every step passed a check made by code, so the
+// same ask is answered again with no model and says where it came from.
+memory answers of Report
+record Topic { text: Text }
 // What the engine finds wrong with a program before it is kept.
 record KFile { path: Text text: Text before: Text exists: Bool }
 record Reading { text: Text files: KFile[] }
@@ -656,7 +668,7 @@ workflow read_page(l: Looked) -> Quoted {
   said = use_model reader(job(read_brief(l))) verify quotes_ok(said, l.page.text) retry 1 otherwise {answer: "", quotes: []}
 }
 
-fn look_done(w: Work, page: Page, q: Quoted) -> Done {
+fn look_done(w: Work, page: Page, q: Quoted, kept: Bool) -> Done {
   if page.text.trim().is_empty() {
     return {n: w.n, tool: "look", what: w.step.what, answer: "Kosika could not read the web for this step.", check: "not checked: no page could be read (the run must allow en.wikipedia.org)", ok: false, ran: true}
   }
@@ -664,17 +676,105 @@ fn look_done(w: Work, page: Page, q: Quoted) -> Done {
     return {n: w.n, tool: "look", what: w.step.what, answer: "The page " + page.title + " did not give an answer that could be quoted.", check: "not checked: no passage the model gave was found on " + page.url, ok: false, ran: true}
   }
   return {n: w.n, tool: "look", what: w.step.what, answer: q.answer + "\nSource: " + page.title + " (" + page.url + "): \"" + clip(q.quotes[0], 300) + "\"",
-          check: f"every passage quoted ({q.quotes.length()}) was found word for word on {page.url}", ok: true, ran: true}
+          check: f"every passage quoted ({q.quotes.length()}) was found word for word on {page.url}" + (if kept { ", read from Kosika's memory of that page" } else { "" }), ok: true, ran: true}
+}
+
+// ---------------------------------------------------------------- what Kosika read before
+
+// A source's key: its topic or title as compared, so "Tide" and "tide " meet.
+fn source_key(t: Text) -> Text { return clip(flat(t).replace("_", " "), 200) }
+
+// The title of a page read before that the step names in its own words,
+// or "" when there is none: then the finder model is asked.
+fn known_topic(near: SourcesLike, what: Text) -> Text {
+  let said = " " + flat(what).replace(",", " ").replace(".", " ").replace("'s", "") + " "
+  for m in near.matches {
+    let title = source_key(m.value.title)
+    if title.length() >= 3 and said.contains(" " + title + " ") { return m.value.title }
+    let topic = source_key(m.value.topic)
+    if topic.length() >= 3 and said.contains(" " + topic + " ") { return m.value.topic }
+  }
+  return ""
+}
+
+workflow find_topic(w: Work) -> Said {
+  topic = use_model finder(job(look_brief(w))) verify topic_ok(topic.text) retry 1 otherwise {text: clip(w.step.what, 60)}
+}
+
+fn page_of(s: Source) -> Page { return {url: s.url, title: s.title, text: s.text} }
+fn source_of(topic: Text, page: Page) -> Source { return {url: page.url, title: page.title, topic: topic, text: page.text} }
+
+workflow keep_page(s: Source) -> MemorySaved {
+  by_title = remember s in sources under source_key(s.title)
+  by_topic = remember s in sources under source_key(s.topic)
+}
+
+// The page for a topic: the one kept from an earlier read, else fetched
+// from the web once and kept.
+workflow fetch_page(t: Topic) -> Page {
+  page = execute browser.web_page(url: page_url(t.text)) otherwise {url: "", title: "", text: ""}
+  kept = match page.text.trim().is_empty() {
+    case true { {key: "", entries: 0} }
+    case _ { call keep_page(source_of(t.text, page)) }
+  }
+  got  = page
+}
+
+fn fact_of(topic: Text, page: Page, q: Quoted) -> Fact {
+  let quote = if q.quotes.is_empty() { "" } else { clip(q.quotes[0], 400) }
+  return {topic: topic, answer: clip(q.answer, 600), quote: quote, url: page.url, title: page.title}
+}
+
+fn fact_key(f: Fact) -> Text { return clip(source_key(f.title) + ": " + flat(f.answer), 200) }
+
+workflow keep_fact(f: Fact) -> MemorySaved {
+  saved = remember f in facts under fact_key(f)
+}
+
+// The facts a step is shown: those near its words, checked on their pages
+// before. Words in common count only when they are many.
+fn facts_text(near: FactsLike) -> Text {
+  let floor = if near.by == "meaning" { 0.6 } else { 0.25 }
+  var out = ""
+  var n = 0
+  for m in near.matches {
+    if m.score >= floor and n < 3 {
+      out = out + f"- {m.value.answer} (read on {m.value.title}: \"{clip(m.value.quote, 200)}\")\n"
+      n = n + 1
+    }
+  }
+  if out.is_empty() { return "" }
+  return "Facts Kosika read before and found word for word on their pages:\n" + out
+}
+
+fn with_facts(w: Work, near: FactsLike) -> Work {
+  let known = facts_text(near)
+  if known.is_empty() { return w }
+  if w.before.trim().is_empty() { return {..w, before: known} }
+  return {..w, before: w.before + "\n" + known}
 }
 
 workflow do_look(w: Work) -> Done {
-  topic = use_model finder(job(look_brief(w))) verify topic_ok(topic.text) retry 1 otherwise {text: clip(w.step.what, 60)}
-  page  = execute browser.web_page(url: page_url(topic.text)) otherwise {url: "", title: "", text: ""}
+  near  = recall sources like w.step.what
+  named = known_topic(near, w.step.what)
+  topic = match named.is_empty() {
+    case true { call find_topic(w) }
+    case _ { {text: named} }
+  }
+  known = recall sources under source_key(topic.text)
+  page  = match known.found {
+    case true { page_of(known.value.value()) }
+    case _ { call fetch_page({text: topic.text}) }
+  }
   said  = match page.text.trim().is_empty() {
     case true { {answer: "", quotes: []} }
     case _ { call read_page({w: w, page: page}) }
   }
-  done  = look_done(w, page, said)
+  kept  = match page.text.trim().is_empty() or said.quotes.is_empty() {
+    case true { {key: "", entries: 0} }
+    case _ { call keep_fact(fact_of(topic.text, page, said)) }
+  }
+  done  = look_done(w, page, said, known.found)
 }
 
 // ---------------------------------------------------------------- draw: Kosika Designs draws it, no model
@@ -770,7 +870,9 @@ fn think_done(w: Work, t: Thought) -> Done {
   return {n: w.n, tool: "think", what: w.step.what, answer: t.text, check: check, ok: t.ok, ran: true}
 }
 
-workflow do_think(w: Work) -> Done {
+workflow do_think(w0: Work) -> Done {
+  near   = recall facts like w0.step.what
+  w      = with_facts(w0, near)
   said   = use_model thinker(job(think_brief(w))) verify said_ok(said.text) retry 1 otherwise {text: ""}
   shown  = {..w, before: said.text}
   judged = match usable(said.text) {
@@ -942,8 +1044,52 @@ fn brain_done(ask: Ask, r: Report) -> BrainDone {
 
 // ---------------------------------------------------------------- the loop
 
+// A report kept whole may be given again only when every step passed a
+// check made by code (maths, tests, quotes found on a page, a drawing),
+// and Aryan has not dropped that ask's lesson.
+fn code_checked(r: Report) -> Bool {
+  if r.steps.is_empty() or r.failed > 0 { return false }
+  for d in r.steps {
+    if not d.ok or not ["calc", "code", "look", "draw"].contains(d.tool) { return false }
+  }
+  return true
+}
+
+fn reusable(seen: AnswersRecalled, told: LessonsRecalled) -> Bool {
+  if not seen.found { return false }
+  if told.found and told.value.value().verdict == "drop" { return false }
+  let r = seen.value.value()
+  return code_checked(r) and junk(r.answer).is_empty()
+}
+
+fn reused(seen: AnswersRecalled) -> Report {
+  let r = seen.value.value()
+  return {..r, planned_by: "Kosika's memory: a run of this same ask whose every step passed a check made by code",
+          note: r.note + " Given again from memory; no model was asked."}
+}
+
+fn keep_answer(r: Report) -> Bool { return code_checked(r) and junk(r.answer).is_empty() and not r.planned_by.starts_with("Kosika's memory") }
+
+workflow keep_report(r: Report) -> MemorySaved {
+  saved = remember r in answers under lesson_key(r.ask)
+}
+
 workflow main(ask: Ask) -> Report {
   budget 60 model calls, 1500 seconds
+  seen   = recall answers under lesson_key(ask.text)
+  told   = recall lessons under lesson_key(ask.text)
+  report = match reusable(seen, told) {
+    case true { reused(seen) }
+    case _ { call ai_solve(ask) }
+  }
+  kept   = match keep_answer(report) {
+    case true { call keep_report(report) }
+    case _ { {key: "", entries: 0} }
+  }
+  out    = report
+}
+
+workflow ai_solve(ask: Ask) -> Report {
   brain = call brain_sense(brain_thought(ask))
   kind  = kind_of(ask.text)
   most  = steps_most(ask.most)
@@ -1370,4 +1516,46 @@ test "a maths plan with no calc step is sent back, and the next one computes" {
   expect r.steps[0].tool == "calc"
   expect r.steps[0].ok
   expect r.planned_by == "a model, checked by Kosika"
+}
+// ---------------------------------------------------------------- remembering what was read and checked (2026-11-24)
+test "an ask answered with every step checked by code is answered again from memory, with no model" {
+  answers planner: [{goal: "Find 18% of 2450", steps: [{tool: "calc", what: "work out 18% of 2450", done_when: "the number is given"}]}]
+  answers counter: [{expression: "0.18*2450", meaning: "18% of 2450"}, {expression: "2450*0.18", meaning: "18% of 2450"}]
+  answers writer: [{text: "18% of 2450 is 441."}]
+  first = main({text: "What is 18% of 2450?", most: 2})
+  again = main({text: "What is 18% of 2450?", most: 2})
+  expect first.planned_by == "a model, checked by Kosika"
+  expect again.planned_by.starts_with("Kosika's memory")
+  expect again.answer == first.answer
+  expect again.note.contains("no model was asked")
+}
+test "an answer a model only reviewed is never given again from memory" {
+  r: Report = {ask: "Why is the sky blue?", kind: "question", goal: "explain", planned_by: "a model, checked by Kosika",
+               steps: [{n: 1, tool: "think", what: "explain it", answer: "Blue light scatters most.", check: "a second model read it", ok: true, ran: true}],
+               answer: "Blue light scatters most.", passed: 1, failed: 0, note: "", pictures: []}
+  expect not code_checked(r)
+  expect not keep_answer(r)
+}
+test "a page is fetched once; the next step that names it reads it from memory" {
+  answers planner: [{goal: "Say what causes tides", steps: [{tool: "look", what: "read the Wikipedia page on Tide and say what causes tides", done_when: "the cause is named"}]},
+                    {goal: "Say how often tides come", steps: [{tool: "look", what: "read about the Tide and say how many high tides a day there are", done_when: "a number is given"}]}]
+  answers finder: [{text: "Tide"}]
+  answers web_page: [{url: "https://en.wikipedia.org/wiki/Tide", title: "Tide", text: "Tides are the rise and fall of sea levels caused by the combined effects of the gravitational forces exerted by the Moon and the Sun. Most places have two high tides each day."}]
+  answers reader: [{answer: "The gravity of the Moon and the Sun.", quotes: ["caused by the combined effects of the gravitational forces exerted by the Moon and the Sun"]},
+                   {answer: "Two high tides a day.", quotes: ["Most places have two high tides each day"]}]
+  answers writer: [{text: "Tides come from the gravity of the Moon and the Sun."}, {text: "Most places have two high tides a day."}]
+  first = main({text: "What causes tides?", most: 2})
+  second = main({text: "How many high tides are there a day?", most: 2})
+  expect first.steps[0].ok
+  expect not first.steps[0].check.contains("memory")
+  expect second.steps[0].ok
+  expect second.steps[0].check.contains("read from Kosika's memory of that page")
+}
+test "a step is shown the facts Kosika checked before" {
+  near: FactsLike = {by: "words", matches: [{key: "tide: x", score: 0.5, value: {topic: "Tide", answer: "The Moon's gravity causes tides.", quote: "gravitational forces exerted by the Moon", url: "u", title: "Tide"}},
+                                            {key: "y", score: 0.1, value: {topic: "Cat", answer: "Cats purr.", quote: "cats purr", url: "v", title: "Cat"}}]}
+  w: Work = {ask: "Explain tides", goal: "g", n: 1, step: {tool: "think", what: "explain tides", done_when: "said"}, before: ""}
+  shown = with_facts(w, near)
+  expect shown.before.contains("The Moon's gravity causes tides.")
+  expect not shown.before.contains("Cats purr")
 }
