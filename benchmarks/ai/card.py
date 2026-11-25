@@ -108,7 +108,7 @@ thead th{{font:600 12px var(--body);color:var(--soft)}} tbody th{{font-weight:60
 <p class="sub">The same 20 real asks, judged by code on your laptop with free models, not by the agent itself. An overclaim means the agent said every step passed but the independent check disagreed.</p></header>
 <div class="runs">{''.join(columns)}</div>
 <div class="wrap"><table><thead><tr><th scope="col">Ask</th>{heads}</tr></thead><tbody>{''.join(table)}</tbody></table></div>
-<p class="note">The first and second runs both start with empty memory. The third run reuses what the second one read and checked: an ask whose every step was checked by code is answered again from memory with no model call. Think-only answers are never reused. Times depend on how busy the free models were that day.</p>
+<p class="note">Runs marked cold start with empty memory; warm runs reuse what the cold run before them read and checked. An ask whose every step was checked by code is answered again from memory with no model call; think-only answers are never reused. From the strict check on, a think step passes only when a second model quotes the answer for every part the ask needs and Kosika finds each quote in it. Times depend on how busy the free models were that day.</p>
 </main>"""
 
 if __name__ == "__main__":
