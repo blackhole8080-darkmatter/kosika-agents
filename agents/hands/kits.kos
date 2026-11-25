@@ -20,7 +20,7 @@ export [kits, kit_named]
 fn kits() -> Kit[] {
   return [
     {name: "Kosika", colour: "amber", skills: ["notes", "windows"], tools: ["hand"],
-     hands: ["look", "press", "write", "read", "move", "click", "type", "keys", "open:notepad", "open:calculator", "browse"], typing: "fast", patience: 3,
+     hands: ["look", "press", "write", "read", "move", "click", "type", "keys", "open:notepad", "open:calculator", "browse", "windows", "close", "launch"], typing: "fast", patience: 3,
      servers: ["files", "fetch", "memory", "kosika"], model: "kosika-router"},
     {name: "coder-1", colour: "pink", skills: ["windows", "coder/python"], tools: ["hand"],
      hands: ["look", "press", "write", "read", "open:notepad"], typing: "fast", patience: 3,

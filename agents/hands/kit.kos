@@ -44,7 +44,10 @@ fn hand_list() -> Text[] {
     "click=move your mouse and click",
     "type=type where the keyboard is",
     "keys=press Enter, Tab, Escape or Backspace",
-    "browse=use a Chrome of its own, none of your sign-ins"
+    "browse=use a Chrome of its own, none of your sign-ins",
+    "windows=see which programs are open, and switch to, place, minimise, maximise or restore their windows",
+    "close=close a program's window the way its X button does: one with unsaved work still asks you",
+    "launch=start any app in your Start menu, by its name there"
   ].concat(app_hands())
 }
 
@@ -154,6 +157,7 @@ fn hand_for(action: Text[]) -> Text {
   if what == "click-on" { return "click" }
   if what == "type-into" { return "type" }
   if what == "key" { return "keys" }
+  if ["windows", "switch", "place", "minimise", "maximise", "restore"].contains(what) { return "windows" }
   return what
 }
 
@@ -170,7 +174,7 @@ fn wait_at_most() -> Number { return 60 }
 // mouse not moved) do not, so they never wait.
 fn quiet_needed(action: Text[]) -> Bool {
   if action.length() == 0 { return false }
-  return ["write", "type-into", "type", "key", "click", "click-on", "move", "move-to", "open", "clear"].contains(action[0])
+  return ["write", "type-into", "type", "key", "click", "click-on", "move", "move-to", "open", "clear", "switch", "place", "minimise", "maximise", "restore", "close", "launch"].contains(action[0])
 }
 
 // Why the agent may not do the action, or "" when its kit allows it.
@@ -331,4 +335,12 @@ test "a kit names only servers and a model Kosika knows" {
 
 test "the cards' motion passes Kosika Designs' motion check" {
   expect motion_check(page_css()) == []
+}
+
+test "window hands: each action needs its hand, and waits for the person" {
+  expect hand_for(["switch", "firefox"]) == "windows" and hand_for(["place", "firefox", "left"]) == "windows"
+  expect hand_for(["close", "firefox"]) == "close" and hand_for(["launch", "Spotify"]) == "launch"
+  expect quiet_needed(["close", "firefox"]) and quiet_needed(["place", "firefox", "left"])
+  expect not quiet_needed(["windows"])
+  expect known_hands().contains("windows") and known_hands().contains("close") and known_hands().contains("launch")
 }

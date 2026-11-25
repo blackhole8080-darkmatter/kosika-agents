@@ -560,6 +560,136 @@ def eyes_press(name: str, thing: str) -> dict:
     return eyes(name, "-Press", thing)
 
 
+# ---- Windows: the person's own windows, by title or program ----------------
+# Kosika decides which window and what to do with it (plan.kos, kit.kos);
+# this only finds the windows and does the one thing it was told.
+
+WM_CLOSE = 0x0010
+SPOTS = ("left", "right", "top", "bottom", "full", "centre")
+
+
+def _title(handle: int) -> str:
+    size = user32.GetWindowTextLengthW(handle)
+    buffer = ctypes.create_unicode_buffer(size + 1)
+    user32.GetWindowTextW(handle, buffer, size + 1)
+    return buffer.value
+
+
+def _program(handle: int) -> str:
+    pid = wintypes.DWORD()
+    user32.GetWindowThreadProcessId(handle, ctypes.byref(pid))
+    opened = kernel32.OpenProcess(0x1000, False, pid.value)  # query limited information
+    if not opened:
+        return ""
+    try:
+        size = wintypes.DWORD(1024)
+        buffer = ctypes.create_unicode_buffer(1024)
+        if kernel32.QueryFullProcessImageNameW(opened, 0, buffer, ctypes.byref(size)):
+            return Path(buffer.value).stem.lower()
+        return ""
+    finally:
+        kernel32.CloseHandle(opened)
+
+
+def open_windows() -> list[dict]:
+    """The windows a person sees in the taskbar: visible, titled, not owned
+    by another window and not a tool window."""
+    found: list[dict] = []
+    proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    def each(handle, _):
+        if not user32.IsWindowVisible(handle) or user32.GetWindow(handle, 4):  # GW_OWNER
+            return True
+        style = user32.GetWindowLongW(handle, -20)  # GWL_EXSTYLE
+        if style & 0x80:  # WS_EX_TOOLWINDOW
+            return True
+        title = _title(handle)
+        if not title.strip():
+            return True
+        box = wintypes.RECT()
+        user32.GetWindowRect(handle, ctypes.byref(box))
+        found.append({"handle": int(handle), "title": title, "program": _program(handle),
+                      "minimised": bool(user32.IsIconic(handle)),
+                      "box": [box.left, box.top, box.right - box.left, box.bottom - box.top]})
+        return True
+
+    user32.EnumWindows(proc(each), 0)
+    # A Store app (Calculator, Settings) shows as two windows of one title:
+    # the frame you see, run by ApplicationFrameHost, and the app inside it.
+    # They are one window to a person: the frame, named by the app.
+    frames = [w for w in found if w["program"] == "applicationframehost"]
+    inner = set()
+    for frame in frames:
+        for w in found:
+            if w is not frame and w["title"] == frame["title"] and w["program"] != "applicationframehost":
+                frame["program"] = w["program"]
+                inner.add(w["handle"])
+                break
+    return [w for w in found if w["handle"] not in inner]
+
+
+def matching(query: str) -> list[dict]:
+    """Windows whose program is the query, else whose title holds it."""
+    q = query.strip().lower().removesuffix(".exe")
+    mine = [w for w in open_windows() if w["program"] != "python" and "kosika" not in w["title"].lower()]
+    by_program = [w for w in mine if w["program"] == q]
+    return by_program or [w for w in mine if q and q in w["title"].lower()]
+
+
+def one_window(query: str) -> dict:
+    """The one window meant, or exit 2 saying which windows matched: Kosika
+    never guesses between two windows."""
+    found = matching(query)
+    if not found:
+        print(f"no open window matches {query!r}")
+        sys.exit(2)
+    programs = {w["program"] for w in found}
+    if len(found) > 1 and len(programs) > 1:
+        print(f"{len(found)} windows match {query!r}: " + "; ".join(f"{w['title']} ({w['program']})" for w in found[:6]))
+        sys.exit(2)
+    return found[0]
+
+
+def work_area() -> tuple[int, int, int, int]:
+    box = wintypes.RECT()
+    user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(box), 0)  # SPI_GETWORKAREA
+    return box.left, box.top, box.right - box.left, box.bottom - box.top
+
+
+def spot_box(spot: str) -> tuple[int, int, int, int]:
+    x, y, w, h = work_area()
+    return {"left": (x, y, w // 2, h), "right": (x + w // 2, y, w - w // 2, h),
+            "top": (x, y, w, h // 2), "bottom": (x, y + h // 2, w, h - h // 2),
+            "full": (x, y, w, h), "centre": (x + w // 6, y + h // 8, w * 2 // 3, h * 3 // 4)}[spot]
+
+
+def start_apps() -> list[tuple[str, str]]:
+    """(name, AppID) of every app in the Start menu, as Windows lists them."""
+    listed = subprocess.run(["powershell", "-NoProfile", "-Command",
+                             "Get-StartApps | ForEach-Object { $_.Name + [char]9 + $_.AppID }"],
+                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+    pairs = []
+    for line in listed.stdout.splitlines():
+        if "\t" in line:
+            name, app_id = line.split("\t", 1)
+            pairs.append((name.strip(), app_id.strip()))
+    return pairs
+
+
+def start_app(name: str) -> tuple[str, str] | None:
+    """The Start-menu app the name means: the same name, else the one app
+    whose name begins with it, else the one that holds it. None when there is
+    none or more than one."""
+    apps, q = start_apps(), name.strip().lower()
+    for test in (lambda n: n.lower() == q, lambda n: n.lower().startswith(q), lambda n: q in n.lower()):
+        found = [a for a in apps if test(a[0])]
+        if len(found) == 1:
+            return found[0]
+        if len(found) > 1:
+            return None
+    return None
+
+
 def main(args: list[str]) -> None:
     global OWN_POINTER_ONLY, AGENT, COLOUR, SPEED, TARGET, QUIET, WAIT_MOST
     # Who acts, in what colour, how fast, and how long to wait for the
@@ -709,6 +839,62 @@ def main(args: list[str]) -> None:
         there = field_text(rest[0]) if window(rest[0]) else None
         print("read" if there is not None else "unreadable")
         print(there or "", end="")
+    elif what == "windows":
+        # What is open, for Kosika to choose from: one window a line.
+        for w in open_windows():
+            if w["program"] == "python":
+                continue
+            x, y, wd, ht = w["box"]
+            print(f"{w['program']}\t{'minimised' if w['minimised'] else 'shown'}\t{x},{y},{wd},{ht}\t{w['title']}")
+    elif what in ("switch", "minimise", "maximise", "restore") and rest:
+        w = one_window(" ".join(rest))
+        handle = w["handle"]
+        if what == "switch":
+            if not to_front(handle):
+                print(f"{w['title']} could not be brought to the front")
+                sys.exit(4)
+        else:
+            user32.ShowWindow(handle, {"minimise": 6, "maximise": 3, "restore": 9}[what])
+            time.sleep(0.3)
+        print(f"{what} {w['title']} ({w['program']})")
+    elif what == "place" and len(rest) > 1 and rest[-1] in SPOTS:
+        w = one_window(" ".join(rest[:-1]))
+        handle = w["handle"]
+        user32.ShowWindow(handle, 9)  # restore: a maximised window does not move
+        x, y, wd, ht = spot_box(rest[-1])
+        user32.MoveWindow(handle, x, y, wd, ht, True)
+        time.sleep(0.3)
+        print(f"placed {w['title']} ({w['program']}) at the {rest[-1]}: {x},{y} {wd}x{ht}")
+    elif what == "close" and rest:
+        # The way its X button closes it: a program with unsaved work still
+        # asks the person, and nothing is ever ended by force.
+        w = one_window(" ".join(rest))
+        user32.PostMessageW(w["handle"], WM_CLOSE, 0, 0)
+        for _ in range(25):
+            time.sleep(0.2)
+            if not user32.IsWindow(w["handle"]) or not user32.IsWindowVisible(w["handle"]):
+                print(f"closed {w['title']} ({w['program']})")
+                return
+        print(f"{w['title']} is still open: it may be asking you to save, so it was left for you")
+        sys.exit(2)
+    elif what == "launch" and rest:
+        # Any app in the Start menu, by its name there.
+        named = start_app(" ".join(rest))
+        if named is None:
+            print(f"no single app in the Start menu is called {' '.join(rest)!r}")
+            sys.exit(2)
+        before = {w["handle"] for w in open_windows()}
+        subprocess.Popen(["explorer.exe", "shell:AppsFolder\\" + named[1]])
+        for _ in range(50):
+            time.sleep(0.3)
+            new = [w for w in open_windows() if w["handle"] not in before]
+            if new:
+                print(f"launched {named[0]}: {new[0]['title']}")
+                return
+        print(f"asked Windows to start {named[0]}; no new window showed yet")
+    elif what == "start-apps":
+        for name, _ in start_apps():
+            print(name)
     elif what == "refuse":
         print("refused:", " ".join(rest))
         sys.exit(5)
