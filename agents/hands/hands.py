@@ -636,6 +636,59 @@ def matching(query: str) -> list[dict]:
     return by_program or [w for w in mine if q and q in w["title"].lower()]
 
 
+
+# ------------------------------------------------- being seen while it acts
+
+_overlay_mod = None
+_overlay_up = False
+
+
+def _overlay():
+    """overlay.py beside this file, loaded once; None when it is not there
+    or the person turned it off with KOSIKA_NO_OVERLAY."""
+    global _overlay_mod
+    if os.environ.get("KOSIKA_NO_OVERLAY") or not (HERE / "overlay.py").exists():
+        return None
+    if _overlay_mod is None:
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("kosika_overlay", HERE / "overlay.py")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["kosika_overlay"] = module
+        spec.loader.exec_module(module)
+        _overlay_mod = module
+    return _overlay_mod
+
+
+def seen(doing: str, x: float | None = None, y: float | None = None, hold: float = 0.9) -> None:
+    """Show the person what this agent is about to do, before it does it:
+    its own pointer glides to (x, y) with DOING under its name, and the
+    light along the screen's edges glows in its colour. The overlay keeps
+    itself to one process, so starting it again is harmless."""
+    global _overlay_up
+    shown = _overlay()
+    if shown is None:
+        return
+    if not _overlay_up:
+        flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        subprocess.Popen([sys.executable, str(HERE / "overlay.py"), "--quit-after", "120"], creationflags=flags,
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _overlay_up = True
+    try:
+        shown.beat(AGENT, doing, None, x, y)
+    except OSError:
+        return
+    time.sleep(hold)
+
+
+def title_bar(w: dict) -> tuple[float | None, float | None]:
+    """Where a window's title bar is, for the pointer to go to; None, None
+    for a minimised window, which is off the screen."""
+    x, y, wd, ht = w["box"]
+    if w.get("minimised") or wd <= 0 or ht <= 0 or x < -10000:
+        return None, None
+    return x + wd / 2, y + 14
+
 def one_window(query: str) -> dict:
     """The one window meant, or exit 2 saying which windows matched: Kosika
     never guesses between two windows."""
@@ -849,6 +902,8 @@ def main(args: list[str]) -> None:
     elif what in ("switch", "minimise", "maximise", "restore") and rest:
         w = one_window(" ".join(rest))
         handle = w["handle"]
+        seen({"switch": "switching to", "minimise": "minimising", "maximise": "maximising",
+              "restore": "restoring"}[what] + " " + w["program"], *title_bar(w))
         if what == "switch":
             if not to_front(handle):
                 print(f"{w['title']} could not be brought to the front")
@@ -862,13 +917,17 @@ def main(args: list[str]) -> None:
         handle = w["handle"]
         user32.ShowWindow(handle, 9)  # restore: a maximised window does not move
         x, y, wd, ht = spot_box(rest[-1])
+        seen(f"moving {w['program']} to the {rest[-1]}", *title_bar(w))
         user32.MoveWindow(handle, x, y, wd, ht, True)
-        time.sleep(0.3)
+        seen(f"moved {w['program']} to the {rest[-1]}", x + wd / 2, y + 14, hold=0.5)
         print(f"placed {w['title']} ({w['program']}) at the {rest[-1]}: {x},{y} {wd}x{ht}")
     elif what == "close" and rest:
         # The way its X button closes it: a program with unsaved work still
         # asks the person, and nothing is ever ended by force.
         w = one_window(" ".join(rest))
+        bx, by = title_bar(w)
+        # Its pointer goes to the window's X, in the title bar's right end.
+        seen(f"closing {w['program']}", (w["box"][0] + w["box"][2] - 22) if bx is not None else None, by)
         user32.PostMessageW(w["handle"], WM_CLOSE, 0, 0)
         for _ in range(25):
             time.sleep(0.2)
@@ -884,11 +943,13 @@ def main(args: list[str]) -> None:
             print(f"no single app in the Start menu is called {' '.join(rest)!r}")
             sys.exit(2)
         before = {w["handle"] for w in open_windows()}
+        seen(f"opening {named[0]}")
         subprocess.Popen(["explorer.exe", "shell:AppsFolder\\" + named[1]])
         for _ in range(50):
             time.sleep(0.3)
             new = [w for w in open_windows() if w["handle"] not in before]
             if new:
+                seen(f"opened {named[0]}", *title_bar(new[0]), hold=0.5)
                 print(f"launched {named[0]}: {new[0]['title']}")
                 return
         print(f"asked Windows to start {named[0]}; no new window showed yet")
