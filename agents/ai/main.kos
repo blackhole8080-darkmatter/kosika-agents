@@ -51,8 +51,9 @@
 import "std/math.kos"
 import "std/designs_plot.kos"
 import "std/brain_core.kos"
+import "std/designs_line.kos"
 
-export [Ask, Step, Plan, Done, Report, kind_of, plan_ok, plan_prefers, plan_fit, fallback_plan, formula_ok, code_shape, reply_ok, brain_thought, plan_before, step_verdict, brain_outcome, brain_checked_by, brain_done, main]
+export [Ask, Step, Plan, Done, Report, kind_of, plan_ok, plan_prefers, plan_fit, fallback_plan, formula_ok, code_shape, reply_ok, brain_thought, plan_before, step_verdict, brain_outcome, brain_checked_by, brain_done, wants_diagram, outline_ok, outline_of, outline_figure, main]
 
 record Ask { text: Text most: Number }
 record Step { tool: Text what: Text done_when: Text }
@@ -104,6 +105,21 @@ record Topic { text: Text }
 record KFile { path: Text text: Text before: Text exists: Bool }
 record Reading { text: Text files: KFile[] }
 record Engine { problems: Text[] }
+
+// A diagram's outline: boxes and the arrows between them, nothing drawn.
+record OBox { id: Text label: Text parent: Text }
+record OArrow { from: Text to: Text label: Text }
+record Outline { title: Text shape: Text boxes: OBox[] arrows: OArrow[] }
+record Explained { ask: Text answer: Text }
+record Diagram { svg: Text why: Text }
+
+// It answers in plain lines, which Kosika reads (outline_of): small models
+// keep plain lines more often than nested JSON.
+model diagrammer {
+  input: Job
+  output: Said as text
+  parameters: { max_output_tokens: 600 }
+}
 
 model planner {
   input: Job
@@ -1393,6 +1409,129 @@ fn reused(seen: AnswersRecalled) -> Report {
 
 fn keep_answer(r: Report) -> Bool { return code_checked(r) and junk(r.answer).is_empty() and not r.planned_by.starts_with("Kosika's memory") }
 
+// ---------------------------------------------------------------- explaining with a white-line diagram
+
+// An explanation is drawn as well as said: when the ask wants something
+// explained and a step that explains it passed its check, a model outlines
+// a small diagram (at most eight boxes and their arrows) and Kosika Designs
+// draws it in white lines (std/designs_line.kos). The outline is held to
+// the checked answer: every box must be said in the answer's own words, and
+// every arrow must join two boxes, so the picture adds nothing the answer
+// did not say. An outline that breaks this is sent back once and then left
+// out; the answer stands without it.
+
+fn explains(t: Text) -> Bool {
+  return has_any(t.lower(), ["explain", "how does", "how do", "how is", "how are", "why ", "what is", "what are", "works", "steps", "process", "compare", "difference", "cycle", "life of", "lifecycle", "stages", "parts of", "made of", "diagram", "show me how"])
+}
+
+// A diagram is drawn for an explanation whose answer passed a check, unless
+// a drawing of Kosika Designs is already there.
+fn wants_diagram(ask: Text, kind: Text, done: Done[]) -> Bool {
+  if kind == "maths" or kind == "code" or kind == "drawing" { return false }
+  if not explains(ask) { return false }
+  let drawn = (for d in done where d.ran and d.ok and d.tool == "draw" { 1 }).length()
+  let said = (for d in done where d.ran and d.ok and (d.tool == "think" or d.tool == "look") { 1 }).length()
+  return drawn == 0 and said > 0
+}
+
+fn diagram_task() -> Text {
+  return "Outline ONE small diagram that explains the answer below, for Kosika Designs to draw in white lines. Use only things the answer itself says, in its own words. Write plain lines and nothing else:\ntitle: a short title\nshape: flow (steps left to right), loop (a cycle back to the start) or tree (a whole and its parts)\nthen 3 to 8 boxes, one a line, as a short id, a colon and 1 to 4 words from the answer, like\na: sea\nb: clouds\nthen the arrows, one a line, like\na -> b: evaporates\n(an arrow's words are optional; in a tree, an arrow goes from a whole to its part)."
+}
+
+// The outline in the diagrammer's plain lines: "title: ...", "shape: ...",
+// "a: label" for a box, "a -> b: label" for an arrow. Lines that are none
+// of these (a model's chatter, list marks, code fences) are passed over.
+fn outline_of(text: Text) -> Outline {
+  var title = ""
+  var shape = ""
+  var boxes: OBox[] = []
+  var arrows: OArrow[] = []
+  for raw in text.replace("\r", "").lines() {
+    let line = raw.trim().trim_marks("-*`").trim()
+    let low = line.lower()
+    if low.starts_with("title:") {
+      title = line.drop(6).trim()
+    } else if low.starts_with("shape:") {
+      shape = low.drop(6).trim().words().first().or("").trim_marks(".,;:!")
+    } else if line.contains("->") {
+      let ends = line.split(":")[0].split("->")
+      let label = if line.contains(":") { line.split(":").drop(1).join(":").trim() } else { "" }
+      if ends.length() == 2 { arrows = arrows.append({from: ends[0].trim(), to: ends[1].trim(), label: label}) }
+    } else if line.contains(":") {
+      let id = line.split(":")[0].trim()
+      if id.length() >= 1 and id.length() <= 3 and not id.contains(" ") { boxes = boxes.append({id: id, label: line.split(":").drop(1).join(":").trim(), parent: ""}) }
+    }
+  }
+  // An arrow may name its boxes by their words instead of their ids.
+  let joined = for a in arrows { {..a, from: box_id(boxes, a.from), to: box_id(boxes, a.to)} }
+  // The shape is how the boxes are laid out, never what they say: when the
+  // model gives none Kosika reads it from the arrows, a loop when one comes
+  // back to the first box, else a flow.
+  let laid = if ln_shapes().contains(shape) { shape } else if boxes.is_empty() { "" } else if not (for a in joined where a.to == boxes[0].id { a }).is_empty() { "loop" } else { "flow" }
+  // In a tree, each arrow goes from a whole to its part: the part's parent.
+  let parented = if laid == "tree" { for b in boxes { {..b, parent: (for a in joined where a.to == b.id { a.from }).first().or("")} } } else { boxes }
+  return {title: title, shape: laid, boxes: parented, arrows: if laid == "tree" { [] } else { joined }}
+}
+
+// The id of the box an arrow's end names, by its id or by its words.
+fn box_id(boxes: OBox[], said: Text) -> Text {
+  let t = said.trim()
+  if not (for b in boxes where b.id == t { b }).is_empty() { return t }
+  return (for b in boxes where b.label.lower() == t.lower() { b.id }).first().or(t)
+}
+
+// "" when the outline can be drawn and says nothing the answer does not.
+fn outline_ok(o: Outline, answer: Text) -> Text {
+  if not ln_shapes().contains(o.shape) { return "shape must be flow, loop or tree" }
+  if o.boxes.length() < 2 or o.boxes.length() > 8 { return "give 3 to 8 boxes" }
+  let ids = for b in o.boxes { b.id.trim() }
+  let said = bc_words(answer)
+  for b in o.boxes {
+    if b.id.trim().is_empty() or (for i in ids where i == b.id.trim() { 1 }).length() > 1 { return "give every box its own id" }
+    if b.label.trim().is_empty() or b.label.length() > 40 { return "label each box in 1 to 4 words" }
+    let words = bc_words(b.label)
+    if words.is_empty() { return f"say what the box '{clip(b.label, 30)}' is, in the answer's words" }
+    for w in words {
+      if not said.contains(w) { return f"the box '{clip(b.label, 30)}' says '{w}', which the answer does not: use only the answer's own words" }
+    }
+    if o.shape == "tree" and not b.parent.trim().is_empty() and not ids.contains(b.parent.trim()) { return f"the box '{clip(b.label, 30)}' names a parent that is not a box" }
+  }
+  for a in o.arrows {
+    if not ids.contains(a.from.trim()) or not ids.contains(a.to.trim()) { return "every arrow must go from one box's id to another's" }
+  }
+  if o.shape != "tree" and o.arrows.is_empty() { return "join the boxes with arrows" }
+  return ""
+}
+
+fn no_outline() -> Outline { return {title: "", shape: "", boxes: [], arrows: []} }
+
+// The outline as Kosika Designs draws it: the first box is the focus.
+fn outline_figure(o: Outline) -> LnFigure {
+  let nodes = for b in o.boxes { ln_part(b.id.trim(), b.label.trim(), "", if o.shape == "tree" { b.parent.trim() } else { "" }) }
+  let edges = for a in o.arrows { ln_to(a.from.trim(), a.to.trim(), clip(a.label.trim(), 24)) }
+  let focus = if o.boxes.is_empty() { "" } else { o.boxes[0].id.trim() }
+  return ln_figure(clip(o.title.trim(), 60), o.shape, nodes, edges, focus)
+}
+
+fn diagram_of(o: Outline, answer: Text) -> Diagram {
+  let why = outline_ok(o, answer)
+  if not why.is_empty() { return {svg: "", why: why} }
+  return {svg: ln_svg(outline_figure(o), ln_look("white")), why: ""}
+}
+
+fn no_diagram() -> Diagram { return {svg: "", why: "not an explanation"} }
+
+workflow explain_diagram(e: Explained) -> Diagram {
+  said = use_model diagrammer(job({task: diagram_task(), ask: e.ask, step: "", before: e.answer})) verify outline_ok(outline_of(said.text), e.answer) retry 1 otherwise {text: ""}
+  out  = diagram_of(outline_of(said.text), e.answer)
+}
+
+// The report with the diagram in its pictures, and a word saying where it came from.
+fn with_diagram(r: Report, d: Diagram) -> Report {
+  if d.svg.is_empty() { return r }
+  return {..r, pictures: r.pictures.append(d.svg), note: r.note + " A white-line diagram, drawn by Kosika Designs from the checked answer's own words, is in the pictures."}
+}
+
 workflow keep_report(r: Report) -> MemorySaved {
   saved = remember r in answers under lesson_key(r.ask)
 }
@@ -1439,7 +1578,11 @@ workflow ai_solve(ask: Ask) -> Report {
   }
   all   = done.append(again)
   reply = use_model writer(job(reply_brief(ask.text, plan, all))) verify reply_ok(reply, all) retry 1 otherwise {text: plain_reply(all)}
-  made  = report_of(ask, kind, plan, all, reply.text)
+  shown = match wants_diagram(ask.text, kind, all) {
+    case true { call explain_diagram({ask: ask.text, answer: reply.text}) }
+    case _ { no_diagram() }
+  }
+  made  = with_diagram(report_of(ask, kind, plan, all, reply.text), shown)
   kept  = remember lesson_of(made, plan) in lessons under lesson_key(ask.text)
   noted = call brain_record(brain_done(ask, made))
   report = {..made, note: made.note + learned_note(hint)}
@@ -1958,4 +2101,79 @@ test "a formula the planner rewrote so Designs cannot read it is drawn from the 
   expect draw_words(bad) == "Plot y = x^2"
   good: Work = {ask: "Plot y = x^2", goal: "a parabola", n: 1, step: {tool: "draw", what: "plot y = x^2 - 1", done_when: "it is drawn"}, before: ""}
   expect draw_words(good) == "plot y = x^2 - 1"
+}
+
+// ---------------------------------------------------------------- explaining with a white-line diagram (2026-11-25)
+
+fn ex_answer() -> Text { return "Water evaporates from the sea, rises and cools into clouds, falls as rain, and flows back to the sea in rivers." }
+
+fn ex_cycle() -> Outline {
+  return {title: "The water cycle", shape: "loop", boxes: [{id: "a", label: "sea", parent: ""}, {id: "b", label: "clouds", parent: ""}, {id: "c", label: "rain", parent: ""}, {id: "d", label: "rivers", parent: ""}],
+          arrows: [{from: "a", to: "b", label: "evaporates"}, {from: "b", to: "c", label: "falls"}, {from: "c", to: "d", label: ""}, {from: "d", to: "a", label: "flows back"}]}
+}
+
+test "an explanation whose answer passed is drawn as well as said" {
+  said: Done = {n: 1, tool: "think", what: "explain the water cycle", answer: "a", check: "quoted", ok: true, ran: true}
+  drawn: Done = {n: 2, tool: "draw", what: "plot", answer: "a", check: "drawn", ok: true, ran: true}
+  unchecked: Done = {n: 1, tool: "think", what: "explain", answer: "a", check: "not found", ok: false, ran: true}
+  expect wants_diagram("Explain the water cycle", "question", [said])
+  expect wants_diagram("How does a vaccine work?", "question", [said])
+  expect not wants_diagram("Explain the water cycle", "question", [unchecked])
+  expect not wants_diagram("Explain the water cycle", "question", [said, drawn])
+  expect not wants_diagram("What is 18% of 2450?", "maths", [said])
+  expect not wants_diagram("Write a haiku about rain", "question", [said])
+}
+
+test "a diagram says nothing the checked answer does not" {
+  expect outline_ok(ex_cycle(), ex_answer()) == ""
+  made = {..ex_cycle(), boxes: ex_cycle().boxes.append({id: "e", label: "glaciers", parent: ""})}
+  expect outline_ok(made, ex_answer()).contains("'glacier")
+  expect outline_ok({..ex_cycle(), shape: "spiral"}, ex_answer()) == "shape must be flow, loop or tree"
+  lost = {..ex_cycle(), arrows: [{from: "a", to: "z", label: ""}]}
+  expect outline_ok(lost, ex_answer()) == "every arrow must go from one box's id to another's"
+  twice = {..ex_cycle(), boxes: [{id: "a", label: "sea", parent: ""}, {id: "a", label: "rain", parent: ""}]}
+  expect outline_ok(twice, ex_answer()) == "give every box its own id"
+  expect outline_ok(no_outline(), ex_answer()) != ""
+}
+
+test "Kosika Designs draws the outline in white lines, the first box in focus" {
+  f = outline_figure(ex_cycle())
+  expect f.shape == "loop" and f.focus == "a" and f.nodes.length() == 4 and f.edges.length() == 4
+  d = diagram_of(ex_cycle(), ex_answer())
+  expect d.why == "" and d.svg.starts_with("<svg") and d.svg.contains("clouds")
+  expect diagram_of(no_outline(), ex_answer()).svg == ""
+}
+
+test "an explanation's report carries its diagram, and an untrue one is left out" {
+  answers planner: [{goal: "Explain the water cycle", steps: [{tool: "think", what: "explain the water cycle in a few sentences", done_when: "evaporation, clouds, rain and rivers are named"}]}]
+  answers thinker: [{text: "Water evaporates from the sea, rises and cools into clouds, falls as rain, and flows back to the sea in rivers."}]
+  answers parter: [{parts: ["how water goes round from the sea and back"]}]
+  answers coverer: [{quotes: ["falls as rain, and flows back to the sea in rivers"]}]
+  answers writer: [{text: "Water evaporates from the sea, rises and cools into clouds, falls as rain, and flows back to the sea in rivers."}]
+  answers diagrammer: [{text: "Here it is:\ntitle: The water cycle\nshape: loop\na: sea\nb: clouds\nc: rain\nd: rivers\na -> b: evaporates\nb -> c: falls\nc -> d\nd -> a: flows back"}]
+  r = main({text: "Explain the water cycle", most: 2})
+  expect r.pictures.length() == 1
+  expect r.pictures[0].contains("clouds")
+  expect r.note.contains("white-line diagram")
+}
+
+test "the diagrammer's plain lines are read into an outline, chatter left out" {
+  o = outline_of("Sure! Here is the diagram.\n```\ntitle: The water cycle\nshape: Loop.\n- a: sea\n- b: clouds\na -> b: evaporates\nb -> a\n```")
+  expect o.title == "The water cycle" and o.shape == "loop"
+  expect (for b in o.boxes { b.id + "=" + b.label }) == ["a=sea", "b=clouds"]
+  expect (for a in o.arrows { a.from + ">" + a.to + ":" + a.label }) == ["a>b:evaporates", "b>a:"]
+  t = outline_of("shape: tree\nw: water\ns: sea\nr: rain\nw -> s\nw -> r")
+  expect (for b in t.boxes { b.id + "<" + b.parent }) == ["w<", "s<w", "r<w"]
+  expect t.arrows.is_empty()
+  expect outline_ok(t, "Water is found in the sea and in rain.") == ""
+  expect outline_of("").boxes.is_empty()
+}
+
+test "a missing shape is read from the arrows, and boxes may be named by their words" {
+  loop = outline_of("a: sea\nb: clouds\nc: rain\na -> b\nb -> c\nc -> a")
+  expect loop.shape == "loop"
+  flow = outline_of("shape: zigzag\na: sea\nb: clouds\nsea -> clouds: evaporates")
+  expect flow.shape == "flow"
+  expect (for a in flow.arrows { a.from + ">" + a.to }) == ["a>b"]
+  expect outline_ok(flow, "Water evaporates from the sea into clouds.") == ""
 }
