@@ -263,13 +263,44 @@ def overlay_stop(name: str) -> None:
 TRIES = max(1, int(os.environ.get("KOSIKA_CODER_TRIES", "2")))
 
 
-def second_try(text: str, report: Path) -> str:
-    """The request again, with the lines of the checks that failed."""
+QUEUE = HERE / "queue.kos"
+
+
+def queue_kos(workflow: str, name: str, payload: dict) -> dict | None:
+    """A workflow of queue.kos, where the to-do list's rules are written in
+    Kosika: what it gives, or None when it could not be run, and the caller
+    falls back to the same rule in Python so a run is never held up."""
+    import ast
+    import tempfile
+
     try:
-        found = [line.strip() for line in report.read_text(encoding="utf-8").splitlines()
-                 if line.strip().startswith("FAIL") or line.startswith("Why it did not pass")]
+        with tempfile.TemporaryDirectory() as work:
+            ask = Path(work) / "ask.json"
+            ask.write_text(json.dumps({name: payload}), encoding="utf-8")
+            done = subprocess.run([sys.executable, "-m", "kosika.cli", "run", str(QUEUE), "--workflow", workflow, "--input", str(ask)],
+                                  cwd=work, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
+                                  env={**os.environ, "PYTHONPATH": str(REPO)})
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for line in reversed(done.stdout.splitlines()):
+        if line.strip().startswith("{"):
+            try:
+                return ast.literal_eval(line.strip())
+            except (ValueError, SyntaxError):
+                return None
+    return None
+
+
+def second_try(text: str, report: Path) -> str:
+    """The request again, with the lines of the checks that failed (queue.kos)."""
+    try:
+        lines = report.read_text(encoding="utf-8").splitlines()
     except OSError:
-        found = []
+        lines = []
+    told = queue_kos("retry", "r", {"text": text, "report": lines})
+    if told and isinstance(told.get("text"), str):
+        return told["text"]
+    found = [line.strip() for line in lines if line.strip().startswith("FAIL") or line.startswith("Why it did not pass")]
     notes = "\n".join(f"- {line}" for line in found[:12]) or "- the checks did not pass"
     return (f"{text}\n\nYour first try is in this folder already, but it did not pass these checks:\n{notes}\n"
             "Fix the files so every one of these passes. Keep what was right.")
@@ -429,10 +460,14 @@ def mark_line(text: str, mark: str, note: str = "") -> None:
             time.sleep(0.1)
     try:
         lines = TODO.read_text(encoding="utf-8").splitlines()
-        for i, line in enumerate(lines):
-            if line[6:].split(" (20")[0].strip() == text and line[:6] in ("- [ ] ", TAKEN):
-                lines[i] = mark + text + note
-                break
+        moved = queue_kos("mark", "m", {"lines": lines, "text": text, "mark": mark, "note": note})
+        if moved and isinstance(moved.get("lines"), list) and len(moved["lines"]) == len(lines):
+            lines = [str(line) for line in moved["lines"]]
+        else:
+            for i, line in enumerate(lines):
+                if line[6:].split(" (20")[0].strip() == text and line[:6] in ("- [ ] ", TAKEN):
+                    lines[i] = mark + text + note
+                    break
         TODO.write_text("\n".join(lines) + "\n", encoding="utf-8")
     finally:
         lock.rmdir()
@@ -584,7 +619,12 @@ def swarm(size: int) -> None:
     if split_open_requests():
         print("Split big requests into small ones (split.kos).", flush=True)
     lines = TODO.read_text(encoding="utf-8").splitlines()
-    open_ones = [line[6:].strip() for line in lines if line.startswith("- [ ] ")][:size]
+    # Which requests this swarm takes, in queue.kos; each is marked as taken.
+    taken = queue_kos("take", "a", {"lines": lines, "size": size})
+    if taken and isinstance(taken.get("texts"), list):
+        open_ones = [str(text) for text in taken["texts"]]
+    else:
+        open_ones = [line[6:].strip() for line in lines if line.startswith("- [ ] ")][:size]
     if not open_ones:
         print("Nothing is open in todo.md.")
         if router is not None:

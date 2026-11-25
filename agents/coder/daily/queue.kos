@@ -1,0 +1,115 @@
+// The coders' to-do list and its rules, in Kosika.
+//
+// daily.py runs the swarm's processes and copies files; what the list
+// means is decided here: which requests a swarm takes, how a line is
+// marked as it moves on, and what a coder is told when its first try is
+// sent back. No model is asked.
+//
+// A line of the list is "- [m] the request", and a mark says where it is:
+//   [ ] open    [~] taken by a coder now    [x] passed
+//   [!] did not pass    [>] asked again in another shape below
+// A request that has run carries a note after it: " (2026-11-25, 2026-11-25-3)".
+//
+//   kosika run queue.kos --workflow take --input ask.json
+//   ask.json: {"a": {"lines": ["- [ ] add ...", "- [x] add ..."], "size": 4}}
+
+export [QueueAsk, QueueTaken, MarkAsk, QueueLines, RetryAsk, RetryText, qk_open, qk_text, qk_marked, qk_second_try, take, mark, retry]
+
+record QueueAsk { lines: Text[] size: Number }
+record QueueTaken { texts: Text[] lines: Text[] }
+record MarkAsk { lines: Text[] text: Text mark: Text note: Text }
+record QueueLines { lines: Text[] changed: Bool }
+record RetryAsk { text: Text report: Text[] }
+record RetryText { text: Text }
+
+fn qk_opened() -> Text { return "- [ ] " }
+fn qk_taken() -> Text { return "- [~] " }
+
+// The request a line holds, without its mark or a note of when it ran.
+fn qk_text(line: Text) -> Text { return line.drop(6).split(" (20")[0].trim() }
+
+// The first `size` open requests, in the order the list gives them.
+fn qk_open(lines: Text[], size: Number) -> Text[] {
+  return (for line in lines where line.starts_with(qk_opened()) { line.drop(6).trim() }).take(size.max(0))
+}
+
+// The list with the line holding `text`, open or taken, given a new mark and
+// note. Only the first such line changes; a line already passed, failed or
+// asked again is left as it is.
+fn qk_marked(lines: Text[], text: Text, mark: Text, note: Text) -> QueueLines {
+  var out: Text[] = []
+  var done = false
+  for line in lines {
+    let movable = line.starts_with(qk_opened()) or line.starts_with(qk_taken())
+    if not done and movable and qk_text(line) == text.trim() {
+      out = out.append(mark + text.trim() + note)
+      done = true
+    } else {
+      out = out.append(line)
+    }
+  }
+  return {lines: out, changed: done}
+}
+
+// The request again, with the checks that failed, as a reviewer sends a
+// change back with notes: the report's FAIL lines and its reason, at most 12.
+fn qk_second_try(text: Text, report: Text[]) -> Text {
+  let found = (for line in report where line.trim().starts_with("FAIL") or line.starts_with("Why it did not pass") { "- " + line.trim() }).take(12)
+  let notes = if found.is_empty() { "- the checks did not pass" } else { found.join("\n") }
+  return text + "\n\nYour first try is in this folder already, but it did not pass these checks:\n" + notes + "\nFix the files so every one of these passes. Keep what was right."
+}
+
+// A swarm takes its requests: each is marked as taken in the list it returns.
+workflow take(a: QueueAsk) -> QueueTaken {
+  out = qk_taking(a)
+}
+
+fn qk_taking(a: QueueAsk) -> QueueTaken {
+  let texts = qk_open(a.lines, a.size)
+  var lines = a.lines
+  for t in texts { lines = qk_marked(lines, t, qk_taken(), "").lines }
+  return {texts: texts, lines: lines}
+}
+
+workflow mark(m: MarkAsk) -> QueueLines {
+  out = qk_marked(m.lines, m.text, m.mark, m.note)
+}
+
+workflow retry(r: RetryAsk) -> RetryText {
+  out = {text: qk_second_try(r.text, r.report)}
+}
+
+// ---------------------------------------------------------------- tests
+
+fn qk_test_list() -> Text[] {
+  return ["# Requests", "- [x] add a Text method shout() giving a Text (2026-11-17, 2026-11-17-4)", "- [ ] add a Number method twice() giving a Number", "- [!] add a Number method half() giving a Number (2026-11-20, 2026-11-20-1)", "- [ ] add an exported function mean(numbers: Number[]) -> Number to kosika/std/stats.kos", "- [~] add a Text method loud() giving a Text", "- [ ] add a Text method quiet() giving a Text"]
+}
+
+test "a swarm takes the first open requests, in order, and marks them taken" {
+  t = qk_taking({lines: qk_test_list(), size: 2})
+  expect t.texts == ["add a Number method twice() giving a Number", "add an exported function mean(numbers: Number[]) -> Number to kosika/std/stats.kos"]
+  expect t.lines[2] == "- [~] add a Number method twice() giving a Number"
+  expect t.lines[4].starts_with("- [~] add an exported function mean")
+  expect t.lines[6] == "- [ ] add a Text method quiet() giving a Text"
+  expect qk_open(qk_test_list(), 10).length() == 3
+  expect qk_open(qk_test_list(), 0).is_empty()
+}
+
+test "a line moves on with its note, and a finished line is never moved" {
+  done = qk_marked(qk_test_list(), "add a Text method loud() giving a Text", "- [x] ", " (2026-11-25, 2026-11-25-2)")
+  expect done.changed
+  expect done.lines[5] == "- [x] add a Text method loud() giving a Text (2026-11-25, 2026-11-25-2)"
+  failed = qk_marked(qk_test_list(), "add a Number method half() giving a Number", "- [x] ", "")
+  expect not failed.changed
+  expect failed.lines == qk_test_list()
+  expect qk_text("- [!] add a Number method half() giving a Number (2026-11-20, 2026-11-20-1)") == "add a Number method half() giving a Number"
+}
+
+test "a first try sent back carries the checks that failed" {
+  again = qk_second_try("add a Number method twice()", ["# report", "PASS  go vet", "FAIL  test_twice: 2.twice() == 4 failed: 5 != 4", "Why it did not pass: the coder said its own tests failed"])
+  expect again.starts_with("add a Number method twice()\n\nYour first try")
+  expect again.contains("- FAIL  test_twice: 2.twice() == 4 failed: 5 != 4")
+  expect again.contains("- Why it did not pass: the coder said its own tests failed")
+  expect not again.contains("PASS  go vet")
+  expect qk_second_try("x", []).contains("- the checks did not pass")
+}
