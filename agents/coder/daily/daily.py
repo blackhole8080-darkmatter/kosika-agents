@@ -416,26 +416,51 @@ TAKEN = "- [~] "
 MEMBER_SECONDS = int(os.environ.get("KOSIKA_CODER_SECONDS", "2700"))
 
 
+DAY = HERE / "day.kos"
+
+
+def run_day(workflow: str, name: str, value: dict) -> dict:
+    """A decision of day.kos (in Kosika, no model): its workflow run on one
+    record, the result as a dict."""
+    import ast
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as work:
+        ask = Path(work) / "day.json"
+        ask.write_text(json.dumps({name: value}), encoding="utf-8")
+        done = subprocess.run([sys.executable, "-m", "kosika.cli", "run", str(DAY), "--workflow", workflow, "--input", str(ask)],
+                              cwd=work, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
+                              env={**os.environ, "PYTHONPATH": str(REPO)})
+    for line in reversed(done.stdout.splitlines()):
+        if line.strip().startswith("{"):
+            return ast.literal_eval(line.strip())
+    raise SystemExit(f"day.kos could not decide '{workflow}': {(done.stderr or done.stdout).strip()[-400:]}")
+
+
+class todo_lock:
+    """todo.md, held while it is read and written again: several swarm
+    members write it."""
+
+    def __enter__(self) -> None:
+        self.lock = TODO.with_suffix(".lock")
+        for _ in range(600):
+            try:
+                self.lock.mkdir()
+                return
+            except FileExistsError:
+                time.sleep(0.1)
+
+    def __exit__(self, *_: object) -> None:
+        self.lock.rmdir()
+
+
 def mark_line(text: str, mark: str, note: str = "") -> None:
-    """Mark the line holding `text`, open or taken, in todo.md as it is now:
-    several swarm members write it, so each reads it again just before, under
-    a lock file."""
-    lock = TODO.with_suffix(".lock")
-    for _ in range(600):
-        try:
-            lock.mkdir()
-            break
-        except FileExistsError:
-            time.sleep(0.1)
-    try:
-        lines = TODO.read_text(encoding="utf-8").splitlines()
-        for i, line in enumerate(lines):
-            if line[6:].split(" (20")[0].strip() == text and line[:6] in ("- [ ] ", TAKEN):
-                lines[i] = mark + text + note
-                break
-        TODO.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    finally:
-        lock.rmdir()
+    """Mark the line holding `text`, open or taken, in todo.md as it is now
+    (day.kos decides the new list), read again just before, under the lock."""
+    with todo_lock():
+        marked = run_day("mark", "m", {"todo": TODO.read_text(encoding="utf-8"), "request": text, "mark": mark, "note": note})
+        if marked["found"]:
+            TODO.write_text(marked["todo"], encoding="utf-8")
 
 
 SPLIT = HERE / "split.kos"
@@ -546,14 +571,7 @@ def add_gap_requests() -> int:
     # gaps.kos gives the replacements of failed requests first, in order.
     moved = dict(zip(found["moved"], found["lines"]))
     rest = found["lines"][len(found["moved"]):]
-    lock = TODO.with_suffix(".lock")
-    for _ in range(600):
-        try:
-            lock.mkdir()
-            break
-        except FileExistsError:
-            time.sleep(0.1)
-    try:
+    with todo_lock():
         out = []
         for line in TODO.read_text(encoding="utf-8").splitlines():
             text = line[6:].split(" (20")[0].strip()
@@ -564,8 +582,6 @@ def add_gap_requests() -> int:
             out.append(line)
         out.extend([*moved.values(), *rest])
         TODO.write_text("\n".join(out) + "\n", encoding="utf-8")
-    finally:
-        lock.rmdir()
     for note in found["notes"]:
         print("gaps.kos:", note, flush=True)
     return len(found["lines"])
@@ -583,22 +599,26 @@ def swarm(size: int) -> None:
     # Big requests are split into small ones first: the shape that passes.
     if split_open_requests():
         print("Split big requests into small ones (split.kos).", flush=True)
-    lines = TODO.read_text(encoding="utf-8").splitlines()
-    open_ones = [line[6:].strip() for line in lines if line.startswith("- [ ] ")][:size]
+    # Which requests, who takes each, and the list with them marked taken
+    # (and any a crashed run left taken opened again) are day.kos's choice.
+    with todo_lock():
+        plan = run_day("plan", "a", {"todo": TODO.read_text(encoding="utf-8"), "size": size, "names": NAMES})
+        TODO.write_text(plan["todo"], encoding="utf-8")
+    if plan["reopened"]:
+        print(f"Opened again {plan['reopened']} requests a crashed run had left taken (day.kos).", flush=True)
+    open_ones, agents = plan["take"], plan["agents"]
     if not open_ones:
         print("Nothing is open in todo.md.")
         if router is not None:
             router.terminate()
         return
-    for text in open_ones:
-        mark_line(text, TAKEN)
     started = time.monotonic()
     alone = dict(os.environ, KOSIKA_SWARM="1") if len(open_ones) > 1 else dict(os.environ)
     # Each member works as one of the kits' agents, so it has its own
     # colour and pointer on the overlay.
     members = [subprocess.Popen([sys.executable, __file__, "--todo", str(TODO), "--take", text],
-                                env={**alone, "KOSIKA_AGENT": NAMES[at % len(NAMES)]})
-               for at, text in enumerate(open_ones)]
+                                env={**alone, "KOSIKA_AGENT": agent})
+               for text, agent in zip(open_ones, agents)]
     # A member that hangs (a judge step stuck after a failure) must not hold
     # the whole swarm: after MEMBER_SECONDS it is stopped and its request
     # marked as not passed.
@@ -608,7 +628,9 @@ def swarm(size: int) -> None:
             member.wait(timeout=max(1, deadline - time.monotonic()))
         except subprocess.TimeoutExpired:
             member.kill()
-            mark_line(text, "- [!] ", f" ({datetime.date.today().isoformat()}, stopped after {MEMBER_SECONDS // 60} minutes)")
+            end = run_day("ended", "e", {"request": text, "passed": False, "run": "", "date": datetime.date.today().isoformat(),
+                                         "stopped_after": MEMBER_SECONDS // 60})
+            mark_line(text, end["mark"], end["note"])
     if router is not None:
         router.terminate()
     print(f"Swarm of {len(members)}: {round(time.monotonic() - started)} s for all of them together.")
@@ -755,12 +777,13 @@ def main() -> None:
             # The verdict, the report and the record of the run are Kosika's:
             # develop.kos runs the checks and decides; this only hands it the facts.
             judged = judge_in_kosika(place, text, files, ran, today)
-            if judged["passed"] or attempt + 1 == TRIES or ran["state"] != "done":
-                break
             # One more try on the same copy, told what the checks found, as a
-            # reviewer would send a change back with notes.
+            # reviewer would send a change back with notes: day.kos decides.
+            again = run_day("again", "t", {"attempt": attempt, "tries": TRIES, "passed": bool(judged["passed"]), "state": ran["state"]})
+            if not again["again"]:
+                break
             asked = second_try(text, place / "report.md")
-            print(f"{place.name}: did not pass; trying once more with the checker's notes", flush=True)
+            print(f"{place.name}: {again['why']}", flush=True)
     finally:
         if router is not None:
             router.terminate()
@@ -778,7 +801,8 @@ def main() -> None:
         offer_to_keep(place, text, today)
     shutil.rmtree(before, ignore_errors=True)
 
-    mark_line(text, "- [x] " if passed else "- [!] ", f" ({today}, {place.name})")
+    end = run_day("ended", "e", {"request": text, "passed": bool(passed), "run": place.name, "date": today, "stopped_after": 0})
+    mark_line(text, end["mark"], end["note"])
     print(("PASSED " if passed else "DID NOT PASS ") + text)
     print(place / "report.md")
 
