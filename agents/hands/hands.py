@@ -625,6 +625,11 @@ def open_windows() -> list[dict]:
                 frame["program"] = w["program"]
                 inner.add(w["handle"])
                 break
+        else:
+            # Its app window not found (still starting, or minimised): the
+            # frame is named by its title, which for a Store app is the
+            # app's name (Calculator, Settings), not "applicationframehost".
+            frame["program"] = frame["title"].strip().lower()
     return [w for w in found if w["handle"] not in inner]
 
 
