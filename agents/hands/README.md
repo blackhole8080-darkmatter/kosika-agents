@@ -14,7 +14,7 @@ Every agent's kit is in [kits.kos](kits.kos). Edit it to change an agent:
 | colour | its pointer's colour: `#rrggbb`, or one of `amber violet sky gold mint rose indigo pink lime cyan red white` |
 | skills | notes it reads before it works: `skills/NAME.md`, a skill in the open format (`skills/NAME/SKILL.md`, as other AI apps write them), or another agent's, like `coder/python`. A skill is advice only and never gives the agent a power. `kosika skills-export skills --out DIR` writes these notes as `DIR/NAME/SKILL.md` for other apps. |
 | tools  | the Kosika tools it may call |
-| hands  | what it may do here: `look press write read move click type keys open:notepad open:calculator browse` |
+| hands  | what it may do here: `look press write read move click type keys open:notepad open:calculator browse windows close launch` |
 | typing | `steady` (keys, 15 letters a second, to watch), `fast` (straight into the field when the program allows it, else keys at the fastest rate learned exact for that program) or `instant` (the field, else pasted at once, your clipboard put back after) |
 | patience | seconds you must have left keyboard and mouse alone before it types, clicks or brings a window forward (0 never waits) |
 
@@ -118,6 +118,27 @@ and a glowing "waiting for your yes" when one of its actions is asked about:
 writes each recorded run as a Kosika test that gives its real results to
 `done` in main.kos and expects the same ending. If a change would judge a
 real run differently, `kosika test recorded.kos` fails. Typed words are not kept.
+
+## Your windows: switch, place, close, start
+
+Three hands work on your own windows (only the `Kosika` agent has them):
+
+- `windows`: see which programs are open, and switch to, place (`left right top bottom full centre`), minimise, maximise or restore one
+- `close`: close a program's window the way its X button does, so a program with unsaved work still asks you; nothing is ever ended by force
+- `launch`: start any app in your Start menu, by its name there
+
+```powershell
+python hands.py windows                 # what is open
+python hands.py place chrome left       # Chrome's window on the left half
+python hands.py close spotify           # as its X button would
+python hands.py launch calculator
+```
+
+Told in words (`plan.kos`, workflows `go` for one job and `tasks` for up to four), the model
+sees only the names of the programs that are open, never a window's title, and never a
+private browser window at all. Every job is checked against the kit and the open programs
+before anything runs, a window that two programs could mean is refused rather than guessed,
+and every step still waits for your yes.
 
 ## Told in words, planned by its own model
 

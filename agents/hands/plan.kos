@@ -21,8 +21,20 @@ choice Job {
   write_note(text: Text)
   press_in(app: Text, name: Text)
   read_page(url: Text)
+  switch_to(app: Text)
+  arrange(app: Text, spot: Text)
+  minimise_app(app: Text)
+  close_app(app: Text)
+  open_app(name: Text)
   nothing(why: Text)
 }
+
+// Several jobs, done in order, for an ask that needs more than one.
+record Jobs { jobs: Job[] }
+record TaskAsk { agent: Text words: Text menu: Text most: Number }
+record JobRun { agent: Text job: Job programs: Text[] }
+
+
 
 record Request { agent: Text words: Text menu: Text }
 record Ask { agent: Text words: Text }
@@ -34,8 +46,43 @@ model planner {
   parameters: { temperature: 0 }
 }
 
+// ---- The person's windows ---------------------------------------------------
+
+// The places a window can be put, in the screen's work area.
+fn spots() -> Text[] { return ["left", "right", "top", "bottom", "full", "centre"] }
+
+// A window the model is never told about: a private browser window.
+fn private_window(title: Text) -> Bool {
+  let t = title.lower()
+  return t.contains("private browsing") or t.contains("inprivate") or t.contains("incognito")
+}
+
+// The programs open now, by name only, from `hands.py windows` (program,
+// state, box, title on each line). The model is shown these names, never a
+// window's title, and a private browser window is left out altogether. A
+// Store app's frame is named by its title (Calculator, Settings).
+fn open_programs(listing: Text) -> Text[] {
+  var names: Text[] = []
+  for line in listing.replace("\r", "").lines() {
+    let parts = line.split("\t")
+    if parts.length() >= 4 and not private_window(parts.drop(3).join("\t")) {
+      let name = if parts[0] == "applicationframehost" { parts.drop(3).join(" ").trim().lower() } else { parts[0].trim().lower() }
+      if not name.is_empty() and not names.contains(name) { names = names.append(name) }
+    }
+  }
+  return names
+}
+
+// A program name the model gave, as the hands look it up: no path, no switch.
+fn plain_program(app: Text) -> Bool {
+  let t = app.trim()
+  return t.length() > 0 and t.length() <= 60 and not t.contains("\\") and not t.contains("/") and not t.contains(":") and not t.starts_with("-")
+}
+
 // The jobs this kit can do, as the model is shown them.
-fn menu(k: Kit) -> Text {
+fn menu(k: Kit) -> Text { return menu_with(k, []) }
+
+fn menu_with(k: Kit, programs: Text[]) -> Text {
   var lines: Text[] = []
   if refusal(k, ["open", "notepad"]) == "" and refusal(k, ["write", "notepad"]) == "" {
     lines = lines.append("write_note(text): open a fresh Notepad page and write text in it")
@@ -46,7 +93,23 @@ fn menu(k: Kit) -> Text {
   if refusal(k, ["browse"]) == "" {
     lines = lines.append("read_page(url): open a web page in the hands' own browser and read it")
   }
-  return lines.append("nothing(why): when none of these is what was asked").join("\n")
+  if refusal(k, ["switch", "x"]) == "" {
+    lines = lines.append("switch_to(app): bring that program's window to the front")
+    lines = lines.append("arrange(app, spot): put that program's window at " + spots().join(", "))
+    lines = lines.append("minimise_app(app): minimise that program's window")
+  }
+  if refusal(k, ["close", "x"]) == "" {
+    lines = lines.append("close_app(app): close that program's window, as its X button does")
+  }
+  if refusal(k, ["launch", "x"]) == "" {
+    lines = lines.append("open_app(name): start an app by its name in the Start menu")
+  }
+  let open_now = if programs.is_empty() { "" } else { "\nPrograms open now (use these names for app): " + programs.join(", ") }
+  return lines.append("nothing(why): when none of these is what was asked").join("\n") + open_now
+}
+
+fn seeing_request(k: Kit, words: Text, programs: Text[]) -> Request {
+  return {agent: k.name, words: words, menu: menu_with(k, programs)}
 }
 
 fn request_for(k: Kit, words: Text) -> Request {
@@ -55,6 +118,11 @@ fn request_for(k: Kit, words: Text) -> Request {
 
 fn job_text(job: Job) -> Text {
   return match job {
+    case switch_to(app) { f"switch_to({app})" }
+    case arrange(app, spot) { f"arrange({app}, {spot})" }
+    case minimise_app(app) { f"minimise_app({app})" }
+    case close_app(app) { f"close_app({app})" }
+    case open_app(name) { f"open_app({name})" }
     case write_note(text) { f"write_note({text.length().to_text()} letters)" }
     case press_in(app, name) { f"press_in({app}, {name})" }
     case read_page(url) { f"read_page({url})" }
@@ -65,6 +133,11 @@ fn job_text(job: Job) -> Text {
 // The actions a job needs, so the kit can refuse it before anything is done.
 fn job_actions(job: Job) -> Text[][] {
   return match job {
+    case switch_to(app) { [["switch", app]] }
+    case arrange(app, spot) { [["place", app, spot]] }
+    case minimise_app(app) { [["minimise", app]] }
+    case close_app(app) { [["close", app]] }
+    case open_app(name) { [["launch", name]] }
     case write_note(text) { [["open", "notepad"], ["write", "notepad"], ["read", "notepad"]] }
     case press_in(app, name) { [["look", app], ["press", app]] }
     case read_page(url) { [["browse"]] }
@@ -77,8 +150,23 @@ fn is_web_address(url: Text) -> Bool {
 }
 
 // Why this pick cannot be done for this kit, or "".
-fn pick_refusal(k: Kit, job: Job) -> Text {
+fn pick_refusal(k: Kit, job: Job) -> Text { return pick_refusal_in(k, job, []) }
+
+// The same, knowing which programs are open: a window job must name one of
+// them, so a model cannot send the hands at a program that is not there.
+fn window_refusal(app: Text, programs: Text[]) -> Text {
+  if not plain_program(app) { return f"'{app}' is not a program name" }
+  if not programs.contains(app.trim().lower()) { return f"'{app}' is not open now" }
+  return ""
+}
+
+fn pick_refusal_in(k: Kit, job: Job, programs: Text[]) -> Text {
   let bad = match job {
+    case switch_to(app) { window_refusal(app, programs) }
+    case arrange(app, spot) { if spots().contains(spot) { window_refusal(app, programs) } else { f"'{spot}' is not a place: say " + spots().join(", ") } }
+    case minimise_app(app) { window_refusal(app, programs) }
+    case close_app(app) { window_refusal(app, programs) }
+    case open_app(name) { if plain_program(name) { "" } else { f"'{name}' is not an app name" } }
     case write_note(text) { if text.trim() == "" { "the model gave no words to write" } else { "" } }
     case press_in(app, name) { if app != "notepad" { f"'{app}' is not a program the hands know" } else { if name.trim() == "" { "the model named nothing to press" } else { "" } } }
     case read_page(url) { if is_web_address(url) { "" } else { f"'{url}' is not a web address" } }
@@ -95,13 +183,20 @@ fn pick_refusal(k: Kit, job: Job) -> Text {
 // The three commands of a job, every job made three long: a step it does
 // not need is a skip, shown and approved like the others, and nothing is
 // done. A refused pick makes every command a refusal.
-fn commands(k: Kit, job: Job) -> Text[][] {
-  let refused = pick_refusal(k, job)
+fn commands(k: Kit, job: Job) -> Text[][] { return commands_in(k, job, []) }
+
+fn commands_in(k: Kit, job: Job, programs: Text[]) -> Text[][] {
+  let refused = pick_refusal_in(k, job, programs)
   if refused != "" {
     let no = ["hands.py", "--agent", k.name, "refuse", refused]
     return [no, no, no]
   }
   return match job {
+    case switch_to(app) { [act(k, "", ["switch", app.trim().lower()]), skip("", "nothing more to do"), skip("", "nothing more to do")] }
+    case arrange(app, spot) { [act(k, "", ["place", app.trim().lower(), spot]), skip("", "nothing more to do"), skip("", "nothing more to do")] }
+    case minimise_app(app) { [act(k, "", ["minimise", app.trim().lower()]), skip("", "nothing more to do"), skip("", "nothing more to do")] }
+    case close_app(app) { [act(k, "", ["close", app.trim().lower()]), skip("", "nothing more to do"), skip("", "nothing more to do")] }
+    case open_app(name) { [act(k, "", ["launch", name.trim()]), skip("", "nothing more to do"), skip("", "nothing more to do")] }
     case write_note(text) { [act(k, "", ["open", "notepad"]), act(k, "", ["write", "notepad", text]), act(k, "", ["read", "notepad"])] }
     case press_in(app, name) { [act(k, "", ["look", app]), act(k, "", ["press", app, name]), skip("", "nothing more to do")] }
     case read_page(url) { [web(k, ["start"]), web(k, ["open", url]), web(k, ["read"])] }
@@ -111,9 +206,11 @@ fn commands(k: Kit, job: Job) -> Text[][] {
 
 workflow go(a: Ask) -> Done {
   k = kit_named(a.agent)
-  request = request_for(k, a.words)
+  seen = execute hands.hand(args: ["hands.py", "windows"])
+  programs = open_programs(seen.stdout)
+  request = seeing_request(k, a.words, programs)
   job = use_model planner(agent: request.agent, words: request.words, menu: request.menu)
-  cmds = commands(k, job)
+  cmds = commands_in(k, job, programs)
   first = execute hands.hand(args: cmds[0])
   second = execute hands.hand(args: after(first, cmds[1]))
   third = execute hands.hand(args: after(second, cmds[2]))
@@ -145,4 +242,107 @@ test "a pick the kit does not allow, or a bad one, does nothing at all" {
   expect pick_refusal(kit_named("coder-1"), press_in("regedit", "Delete")).contains("not a program")
   expect pick_refusal(kit_named("coder-1"), nothing("asked to sing")).contains("no job")
   expect job_text(write_note("secret words")) == "write_note(12 letters)"
+}
+
+// ---- Several jobs for one ask ------------------------------------------------
+
+// Asked for more than one thing ("put Chrome on the left and close Spotify"),
+// the model lists the jobs in order, at most four, from the same menu. Kosika
+// checks every one against the kit and the open programs before any runs, and
+// each job's every step still waits for the person's yes.
+model tasker {
+  input: TaskAsk
+  output: Jobs
+  deployment: "kosika-router"
+  parameters: { temperature: 0 }
+}
+
+fn tasks_refusal(k: Kit, plan: Jobs, programs: Text[], most: Number) -> Text {
+  if plan.jobs.is_empty() { return "give at least one job" }
+  if plan.jobs.length() > most { return f"give at most {most} jobs" }
+  for j in plan.jobs {
+    let why = pick_refusal_in(k, j, programs)
+    if why != "" { return job_text(j) + ": " + why }
+  }
+  return ""
+}
+
+workflow run_job(r: JobRun) -> Done {
+  k = kit_named(r.agent)
+  cmds = commands_in(k, r.job, r.programs)
+  first = execute hands.hand(args: cmds[0])
+  second = execute hands.hand(args: after(first, cmds[1]))
+  third = execute hands.hand(args: after(second, cmds[2]))
+  result = done([first, second, third])
+  require approval
+}
+
+// The jobs' outcomes, joined: the first job that stopped stops the rest.
+fn all_done(each: Done[]) -> Done {
+  var said: Text[] = []
+  var steps = 0
+  for d in each {
+    said = said.append(d.said)
+    steps += d.steps
+    if d.stopped { return {said: said.join("\n"), steps: steps, stopped: true, checked: false} }
+  }
+  return {said: said.join("\n"), steps: steps, stopped: false, checked: false}
+}
+
+fn no_jobs() -> Jobs { return {jobs: []} }
+
+workflow tasks(a: Ask) -> Done {
+  k = kit_named(a.agent)
+  seen = execute hands.hand(args: ["hands.py", "windows"])
+  programs = open_programs(seen.stdout)
+  plan = use_model tasker(agent: k.name, words: a.words, menu: menu_with(k, programs), most: 4) verify tasks_refusal(k, plan, programs, 4) retry 1 otherwise no_jobs()
+  each = for j in plan.jobs limit 4 {
+    call run_job({agent: k.name, job: j, programs: programs})
+  }
+  result = all_done(each)
+  require approval
+}
+
+fn windows_listing() -> Text {
+  return "firefox\tshown\t0,0,800,600\tNews - Mozilla Firefox\nfirefox\tminimised\t0,0,1,1\tSecret - Mozilla Firefox Private Browsing\nchrome\tshown\t0,0,1,1\tMail\napplicationframehost\tshown\t0,0,1,1\tCalculator\nspotify\tshown\t0,0,1,1\tSpotify Premium"
+}
+
+test "only program names reach the model, and private windows never do" {
+  p = open_programs(windows_listing())
+  expect p == ["firefox", "chrome", "calculator", "spotify"]
+  expect open_programs("firefox\tshown\t0,0,1,1\tA - InPrivate") == []
+  m = menu_with(kit_named("Kosika"), p)
+  expect m.contains("Programs open now (use these names for app): firefox, chrome, calculator, spotify")
+  expect not m.contains("News") and not m.contains("Mail") and not m.contains("Secret")
+  expect m.contains("close_app(app)") and m.contains("open_app(name)") and m.contains("arrange(app, spot)")
+  expect not menu(kit_named("coder-2")).contains("close_app")
+}
+
+test "a window job names an open program and a real place, or nothing is done" {
+  k = kit_named("Kosika")
+  p = open_programs(windows_listing())
+  expect pick_refusal_in(k, arrange("Chrome", "left"), p) == ""
+  expect pick_refusal_in(k, arrange("chrome", "upside down"), p).contains("not a place")
+  expect pick_refusal_in(k, close_app("word"), p) == "'word' is not open now"
+  expect pick_refusal_in(k, close_app("C:\\Windows\\explorer"), p).contains("not a program name")
+  expect pick_refusal_in(k, open_app("--help"), p).contains("not an app name")
+  expect pick_refusal_in(kit_named("coder-1"), close_app("chrome"), p).contains("'close' hand")
+  c = commands_in(k, arrange("Chrome", "left"), p)
+  expect c[0][c[0].length() - 3] == "place" and c[0][c[0].length() - 2] == "chrome" and c[0][c[0].length() - 1] == "left"
+  expect c[1][1] == "skip"
+  expect commands_in(k, close_app("word"), p)[0].contains("refuse")
+}
+
+test "several jobs are all checked before any runs" {
+  k = kit_named("Kosika")
+  p = open_programs(windows_listing())
+  good: Jobs = {jobs: [arrange("chrome", "left"), arrange("firefox", "right"), close_app("spotify")]}
+  expect tasks_refusal(k, good, p, 4) == ""
+  bad: Jobs = {jobs: [arrange("chrome", "left"), close_app("word")]}
+  expect tasks_refusal(k, bad, p, 4) == "close_app(word): 'word' is not open now"
+  expect tasks_refusal(k, no_jobs(), p, 4) == "give at least one job"
+  stopped: Done = {said: "stopped at step 1: you stopped it with Escape", steps: 0, stopped: true, checked: false}
+  fine: Done = {said: "placed", steps: 1, stopped: false, checked: false}
+  expect all_done([fine, stopped, fine]).stopped and all_done([fine, stopped, fine]).steps == 1
+  expect not all_done([fine, fine]).stopped
 }
