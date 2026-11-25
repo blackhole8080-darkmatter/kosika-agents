@@ -306,17 +306,30 @@ fn note_task(p: Piece) -> Text {
   return f"You are reading part of the book \"{p.book}\": the chapter \"{p.title}\", {page_span(p.first, p.last)}. A student will learn this part from your ideas instead of reading it, so pull out everything they must know: 3 to 10 ideas, the most important first. Keep the examples and case studies: they are what makes an idea easy to understand and remember.\n\nFor each idea give:\n- kind: one of term (a word or name the text defines), what (what something is), how (how something is done or works, with its steps), why (why it is done, what it is for, or what causes it), example (an example the text gives), case (a case study, a real story or a worked scenario, with its names and numbers), data (a number, a result or a finding), fact.\n- idea: one or two plain sentences in your own words, saying exactly what the text says and nothing it does not.\n- quote: 5 to 30 words copied exactly, character for character, from the text below, that the idea comes from.\n\nUse only this text, never what you know from elsewhere. If the text is only a table of contents, an index, a list of references or acknowledgements, give no ideas.\nAnswer as JSON: {{\"ideas\": [{{\"kind\": \"...\", \"idea\": \"...\", \"quote\": \"...\"}}]}}\n\nThe text:\n{p.text}"
 }
 
+// A line of a table of contents: "1.1 What is a program? . . . 1", with
+// its dot leaders.
+fn toc_line(l: Text) -> Bool {
+  return l.contains(". . .") or l.contains("....") or l.contains("…")
+}
+
 // Text with too few sentences to hold an idea: a contents page, an index,
 // a list of references, a page of code or numbers.
 fn no_ideas_here(text: Text) -> Bool {
-  let words = text.words()
+  let all = for l in text.lines() where l.trim().length() > 0 { l }
+  let leaders = for l in all where toc_line(l) { l }
+  // a third of the lines are contents lines: a contents page
+  if leaders.length() * 3 >= all.length() and leaders.length() > 0 { return true }
+  let prose = (for l in all where not toc_line(l) { l }).join("\n")
+  let words = prose.words()
   if words.length() < 60 { return true }
-  let marks = text.count(". ") + text.count(".\n") + text.count("? ") + text.count("! ")
+  let marks = prose.count(". ") + prose.count(".\n") + prose.count("? ") + prose.count("! ")
   return marks * 40 < words.length()
 }
 
-// The idea's words found in the piece, word for word.
+// The idea's words found in the piece, word for word, and not a line of
+// the table of contents.
 fn quoted(i: Noted, flat_text: Text) -> Bool {
+  if toc_line(i.quote) { return false }
   let q = flat(i.quote).trim_marks(".,;:\"' ")
   return q.words().length() >= 4 and flat_text.contains(q)
 }
@@ -797,6 +810,13 @@ test "a contents page may give no ideas; a chapter may not" {
   expect ideas_ok({ideas: []}, {..p, text: "Contents 1 Hash tables 2"}) == ""
   long = (for i in 1 to 20 { "A tree keeps its keys in order so a search is quick." }).join(" ")
   expect ideas_ok({ideas: []}, {..p, text: long}).contains("has ideas to learn")
+}
+
+test "a table of contents is not a source of ideas" {
+  toc = (for i in 1 to 12 { "1." + i.to_text() + " What is a program? . . . . . . . . . . " + i.to_text() + ". Read on. And more words here so it is long enough." }).join("\n")
+  expect no_ideas_here(toc)
+  expect not quoted({kind: "what", idea: "A program is a list of steps.", quote: "1.1 What is a program? . . . 1"}, flat("1.1 What is a program? . . . 1"))
+  expect quoted({kind: "what", idea: "A program is a list of steps.", quote: "A program is a sequence of instructions"}, flat("A program is a sequence of instructions that says how."))
 }
 
 test "cards must name real ideas and use four in five of them" {

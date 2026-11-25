@@ -122,6 +122,11 @@ def hollow(text: str) -> bool:
             return all(blank(x) for x in v)
         return v is None or (isinstance(v, str) and not v.strip())
 
+    if isinstance(value, dict) and any(isinstance(v, list) and not v for v in value.values()):
+        # {"ideas": []} is a deliberate answer, "nothing here", which the
+        # program's own check accepts or refuses; asking every other model
+        # the same question only wastes time and free quota.
+        return False
     return isinstance(value, (dict, list)) and blank(value)
 
 
