@@ -487,11 +487,99 @@ def split_open_requests() -> int:
     return split
 
 
+GAPS = HERE / "gaps.kos"
+#: Kosika AI's memory folder (its --memory FOLDER), where the Brain keeps its
+#: timeline as timeline.json. Unset: gaps.kos reads only the coders' log.
+BRAIN = os.environ.get("KOSIKA_BRAIN_MEMORY", "")
+#: How many new requests gaps.kos may add in one run.
+GAPS_MOST = int(os.environ.get("KOSIKA_GAPS_MOST", "4"))
+#: A failed request asked again in another shape is kept with this mark.
+MOVED_MARK = "- [>] "
+
+
+def brain_episodes() -> list[dict]:
+    """The Brain's timeline, oldest first, or none when it cannot be read."""
+    if not BRAIN:
+        return []
+    try:
+        entries = json.loads((Path(BRAIN) / "timeline.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    if not isinstance(entries, dict):
+        return []
+    episodes = [e for e in entries.values() if isinstance(e, dict) and isinstance(e.get("ask"), str)]
+    return sorted(episodes, key=lambda e: (str(e.get("at", "")), e.get("seq", 0)))
+
+
+def gap_requests() -> dict:
+    """What gaps.kos (in Kosika) makes of what failed: new request lines, the
+    failed requests they replace, and a note for each."""
+    import ast
+    import tempfile
+
+    WORK.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as work:
+        ask = Path(work) / "gaps.json"
+        ask.write_text(json.dumps({"a": {"todo": TODO.read_text(encoding="utf-8"), "log": "coders.kl",
+                                         "episodes": brain_episodes(), "most": GAPS_MOST}}), encoding="utf-8")
+        done = subprocess.run([sys.executable, "-m", "kosika.cli", "run", str(GAPS), "--workflow", "gaps", "--input", str(ask),
+                               "--allow-folder", str(WORK)],
+                              cwd=work, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
+                              env={**os.environ, "PYTHONPATH": str(REPO)})
+    for line in reversed(done.stdout.splitlines()):
+        if line.strip().startswith("{") and "lines" in line:
+            found = ast.literal_eval(line.strip())
+            return {"lines": [str(x) for x in found.get("lines", [])], "moved": [str(x) for x in found.get("moved", [])],
+                    "notes": [str(x) for x in found.get("notes", [])]}
+    print("gaps.kos found nothing to add:", (done.stderr or done.stdout).strip()[-300:], flush=True)
+    return {"lines": [], "moved": [], "notes": []}
+
+
+def add_gap_requests() -> int:
+    """Kosika's own next work: each request gaps.kos found goes into todo.md,
+    right after the failed line it replaces (marked [>]) or at the end.
+    Returns how many were added."""
+    found = gap_requests()
+    if not found["lines"]:
+        return 0
+    today = datetime.date.today().isoformat()
+    # gaps.kos gives the replacements of failed requests first, in order.
+    moved = dict(zip(found["moved"], found["lines"]))
+    rest = found["lines"][len(found["moved"]):]
+    lock = TODO.with_suffix(".lock")
+    for _ in range(600):
+        try:
+            lock.mkdir()
+            break
+        except FileExistsError:
+            time.sleep(0.1)
+    try:
+        out = []
+        for line in TODO.read_text(encoding="utf-8").splitlines():
+            text = line[6:].split(" (20")[0].strip()
+            if line.startswith("- [!] ") and text in moved:
+                out.append(MOVED_MARK + text + f" ({today}, asked again below as a function written in Kosika, by gaps.kos)")
+                out.append(moved.pop(text))
+                continue
+            out.append(line)
+        out.extend([*moved.values(), *rest])
+        TODO.write_text("\n".join(out) + "\n", encoding="utf-8")
+    finally:
+        lock.rmdir()
+    for note in found["notes"]:
+        print("gaps.kos:", note, flush=True)
+    return len(found["lines"])
+
+
 def swarm(size: int) -> None:
     """Several coders at once, one request each, sharing the virtual model
     pool. Each works in its own copy and is checked on its own; nothing waits
     for the others but the end of the run."""
     router = start_router()
+    # Kosika's own next work first: what failed, asked again in a shape that
+    # can pass, and drawings the Brain saw fail (gaps.kos, in Kosika).
+    if add_gap_requests():
+        print("Added requests Kosika found from what failed (gaps.kos).", flush=True)
     # Big requests are split into small ones first: the shape that passes.
     if split_open_requests():
         print("Split big requests into small ones (split.kos).", flush=True)

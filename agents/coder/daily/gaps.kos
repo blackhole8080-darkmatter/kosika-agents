@@ -1,0 +1,299 @@
+// gaps.kos: Kosika finds its own next work, in Kosika.
+//
+// It reads what failed and writes new requests for the coder's to-do list:
+//
+//   kosika run gaps.kos --input gaps.json --allow-folder KOSIKA_DAILY
+//
+// Two kinds of failure become new requests. No model is asked; each rule
+// is plain code, so what it adds can be read and checked here.
+//
+//   an engine method that failed   "add a Text method surround(...)" marked
+//                                  [!] becomes "add a function surround(text:
+//                                  Text, ...) to kosika/std/text.kos, written
+//                                  in Kosika". A function written in Kosika
+//                                  runs the same on every engine, so the
+//                                  coder no longer has to write Go and Python
+//                                  that agree (the free models' weak spot).
+//                                  The failed line is marked [>] with where
+//                                  its request went.
+//   a drawing that failed twice    the same ask failed on the Brain's
+//                                  timeline twice or more (the part was
+//                                  Designs, or Kosika AI's draw step said
+//                                  "not drawn") becomes a request to make
+//                                  pl_for draw it, with the ask as its test.
+//
+// A request already on the list (open, taken, done or failed) is never
+// added again, and at most `most` are added in one run. The coders.kl log
+// (every coder run, written by develop.kos) says how often each request
+// failed and why, for the notes.
+
+import "std/brain_core.kos"
+
+export [GapAsk, Gaps, Kept, gap_tasks, engine_method, as_kosika_function, drawing_asks, gap_line_of]
+
+// One line of coders.kl, as develop.kos keeps it.
+record Kept { request: Text run: Text passed: Bool why: Text seconds: Number files: Text[] }
+record LogPath { path: Text }
+record KeptRows { rows: Kept[] ok: Bool problem: Text }
+
+// todo: the to-do list as it is now. log: the coders.kl file ("" for none).
+// episodes: the Brain's timeline, oldest first (the host reads it).
+record GapAsk { todo: Text log: Text episodes: BrainEpisode[] most: Number }
+record GapRun { todo: Text runs: Kept[] episodes: BrainEpisode[] most: Number }
+
+// lines: new "- [ ] ..." lines to add. moved: requests whose failed line is
+// now marked [>]. notes: one line for each, saying where it came from.
+record Gaps { lines: Text[] moved: Text[] notes: Text[] }
+
+// An engine method a request asks for: what it is on, its name, its
+// parameters as written, and the rest of the sentence.
+record Method { found: Bool on: Text name: Text params: Text rest: Text }
+
+tool runs {
+  source system "log"
+  operation: "read"
+  access: observe
+  input: LogPath
+  output: KeptRows
+}
+
+agent reader {
+  can: [runs]
+  max_steps: 1
+}
+
+// "add a Text method surround(left: Text, right: Text) that gives ..." or
+// "add a Number method is_even() that says ...".
+fn engine_method(request: Text) -> Method {
+  let none: Method = {found: false, on: "", name: "", params: "", rest: ""}
+  for on in ["Text", "Number"] {
+    let head = "add a " + on + " method "
+    if request.starts_with(head) {
+      let after = request.drop(head.length())
+      let open = after.index_of("(")
+      let shut = after.index_of(")")
+      if open == null or shut == null { return none }
+      let o = open.or(0)
+      let s = shut.or(0)
+      if s < o { return none }
+      let name = after.take(o).trim()
+      if name.is_empty() or name.contains(" ") { return none }
+      return {found: true, on: on, name: name, params: after.drop(o + 1).take(s - o - 1).trim(), rest: after.drop(s + 1).trim()}
+    }
+  }
+  return none
+}
+
+fn gap_std_file(on: Text) -> Text { return if on == "Text" { "kosika/std/text.kos" } else { "kosika/std/numbers.kos" } }
+
+// Where the value a method is called on begins, given where its "." is:
+// a bracketed value, a quoted text, or a plain word or number.
+fn gap_receiver_start(cs: Text[], dot: Number) -> Number {
+  var k = dot - 1
+  if k < 0 { return dot }
+  if cs[k] == ")" {
+    var depth = 0
+    while k >= 0 {
+      if cs[k] == ")" { depth = depth + 1 }
+      if cs[k] == "(" {
+        depth = depth - 1
+        if depth == 0 { return k }
+      }
+      k = k - 1
+    }
+    return dot
+  }
+  if cs[k] == "\"" {
+    k = k - 1
+    while k >= 0 and cs[k] != "\"" { k = k - 1 }
+    return k.max(0)
+  }
+  while k >= 0 and not [" ", ",", "(", ":", "[", ";"].contains(cs[k]) { k = k - 1 }
+  return k + 1
+}
+
+// Where the bracket opened at `open` closes, or -1.
+fn gap_close_of(cs: Text[], open: Number) -> Number {
+  var depth = 0
+  var k = open
+  while k < cs.length() {
+    if cs[k] == "(" { depth = depth + 1 }
+    if cs[k] == ")" {
+      depth = depth - 1
+      if depth == 0 { return k }
+    }
+    k = k + 1
+  }
+  return -1
+}
+
+// The request's examples written as calls of the function, not the method:
+// "(-4).gcd(6)" becomes "gcd((-4), 6)", "\"ab\".surround(\"[\", \"]\")"
+// becomes "surround(\"ab\", \"[\", \"]\")".
+fn gap_calls_as_function(text: Text, name: Text) -> Text {
+  let marker = "." + name + "("
+  var out = text
+  var turns = 0
+  while out.contains(marker) and turns < 20 {
+    turns = turns + 1
+    let cs = out.chars()
+    let dot = out.index_of(marker).or(0)
+    let start = gap_receiver_start(cs, dot)
+    let open = dot + marker.length() - 1
+    let close = gap_close_of(cs, open)
+    if close < 0 or start >= dot { return out }
+    let receiver = out.drop(start).take(dot - start)
+    let args = out.drop(open + 1).take(close - open - 1).trim()
+    let call = name + "(" + receiver + (if args.is_empty() { "" } else { ", " + args }) + ")"
+    out = out.take(start) + call + out.drop(close + 1)
+  }
+  return out
+}
+
+// The same request, as a function written in Kosika in a std module.
+fn as_kosika_function(m: Method) -> Text {
+  let first = if m.on == "Text" { "text: Text" } else { "n: Number" }
+  let params = if m.params.is_empty() { first } else { first + ", " + m.params }
+  let rest = if m.rest.is_empty() { "" } else { " " + gap_calls_as_function(m.rest, m.name) }
+  return "add a function " + m.name + "(" + params + ") to " + gap_std_file(m.on) + ", written in Kosika (no engine change)," + rest
+}
+
+// The request a to-do line holds, without its mark or its note.
+fn gap_request(line: Text) -> Text { return line.drop(6).split(" (20")[0].trim() }
+
+fn gap_listed(todo: Text, words: Text) -> Bool { return todo.contains(words) }
+
+fn gap_fails(runs: Kept[], request: Text) -> Number {
+  return (for r in runs where r.request == request and not r.passed { r }).length()
+}
+
+fn gap_why(runs: Kept[], request: Text) -> Text {
+  let failed = for r in runs where r.request == request and not r.passed { r.why }
+  return if failed.is_empty() { "" } else { ", last: " + failed[failed.length() - 1] }
+}
+
+// A drawing failed: Designs' own episode, or Kosika AI's draw step.
+fn gap_drawing_failed(e: BrainEpisode) -> Bool {
+  if e.outcome != "failed" { return false }
+  return e.part == "designs" or e.did.lower().contains("not drawn")
+}
+
+// Asks that failed to draw at least twice, oldest first, each once.
+fn drawing_asks(episodes: BrainEpisode[]) -> Text[] {
+  var seen: Text[] = []
+  var out: Text[] = []
+  for e in episodes {
+    let want = e.ask.trim()
+    if gap_drawing_failed(e) and not seen.contains(want) {
+      seen = seen.append(want)
+      if (for f in episodes where f.ask.trim() == want and gap_drawing_failed(f) { f }).length() >= 2 { out = out.append(want) }
+    }
+  }
+  return out
+}
+
+fn gap_quoted(want: Text) -> Text { return want.replace("\"", "'") }
+
+fn gap_drawing_request(want: Text) -> Text {
+  let q = gap_quoted(want)
+  return "make pl_for in kosika/std/designs_plot.kos draw the ask \"" + q + "\", written in Kosika; examples: pl_for(\"" + q + "\").problems.is_empty() is true and pl_for(\"" + q + "\").svg is not empty, and every drawing that passes today still passes"
+}
+
+fn gap_line_of(request: Text) -> Text { return "- [ ] " + request }
+
+fn gap_tasks(a: GapRun) -> Gaps {
+  var lines: Text[] = []
+  var moved: Text[] = []
+  var notes: Text[] = []
+  for line in a.todo.replace("\r\n", "\n").split("\n") {
+    if lines.length() < a.most and line.starts_with("- [!] ") {
+      let request = gap_request(line)
+      let m = engine_method(request)
+      if m.found and not gap_listed(a.todo, "add a function " + m.name + "(") {
+        lines = lines.append(gap_line_of(as_kosika_function(m)))
+        moved = moved.append(request)
+        notes = notes.append(f"{m.name}: the {m.on} method failed ({gap_fails(a.runs, request)} failed runs in coders.kl{gap_why(a.runs, request)}), so it is asked again as a function written in Kosika")
+      }
+    }
+  }
+  for want in drawing_asks(a.episodes) {
+    if lines.length() < a.most and not gap_listed(a.todo, "draw the ask \"" + gap_quoted(want) + "\"") {
+      lines = lines.append(gap_line_of(gap_drawing_request(want)))
+      notes = notes.append(f"'{want}' failed to draw twice or more on the Brain's timeline")
+    }
+  }
+  return {lines: lines, moved: moved, notes: notes}
+}
+
+fn gap_run(a: GapAsk, read: KeptRows) -> GapRun {
+  let rows: Kept[] = if read.ok { read.rows } else { [] }
+  return {todo: a.todo, runs: rows, episodes: a.episodes, most: a.most}
+}
+
+workflow gaps(a: GapAsk) -> Gaps {
+  read  = execute reader.runs(a.log)
+  found = gap_tasks(gap_run(a, read))
+}
+
+workflow gaps_offline(a: GapRun) -> Gaps {
+  found = gap_tasks(a)
+}
+
+// ---------------------------------------------------------------- tests
+
+fn gap_test_ep(part: Text, ask: Text, did: Text, outcome: Text) -> BrainEpisode {
+  return {part: part, session: "default", seq: 1, at: "", ask: ask, did: did, outcome: outcome, checked_by: "none", words: ""}
+}
+
+test "an engine method's request is read: what it is on, its name, its parameters and the rest" {
+  m = engine_method("add a Text method surround(left: Text, right: Text) that gives the text with left before it and right after it")
+  expect m.found
+  expect m.on == "Text"
+  expect m.name == "surround"
+  expect m.params == "left: Text, right: Text"
+  expect m.rest == "that gives the text with left before it and right after it"
+  n = engine_method("add a Number method is_even() that says whether a whole number is even, giving a Bool")
+  expect n.found
+  expect n.on == "Number"
+  expect n.params == ""
+  expect not engine_method("add a function word_count(text: Text) -> Number to kosika/std/text.kos").found
+  expect not engine_method("add a Text method that does something").found
+}
+
+test "a failed engine method is asked again as a function written in Kosika" {
+  expect as_kosika_function(engine_method("add a Text method surround(left: Text, right: Text) that gives the text with left before it and right after it")) == "add a function surround(text: Text, left: Text, right: Text) to kosika/std/text.kos, written in Kosika (no engine change), that gives the text with left before it and right after it"
+  expect as_kosika_function(engine_method("add a Number method is_even() that says whether a whole number is even, giving a Bool")) == "add a function is_even(n: Number) to kosika/std/numbers.kos, written in Kosika (no engine change), that says whether a whole number is even, giving a Bool"
+}
+
+test "examples written as method calls are written as calls of the function" {
+  expect gap_calls_as_function("examples: (-4).gcd(6) is 2, 12.gcd(18) is 6", "gcd") == "examples: gcd((-4), 6) is 2, gcd(12, 18) is 6"
+  expect gap_calls_as_function("examples: \"ab\".surround(\"[\", \"]\") is \"[ab]\"", "surround") == "examples: surround(\"ab\", \"[\", \"]\") is \"[ab]\""
+  expect gap_calls_as_function("examples: 4.is_even() is true", "is_even") == "examples: is_even(4) is true"
+  expect gap_calls_as_function("no examples here", "gcd") == "no examples here"
+}
+
+test "only failed lines become requests, once, and at most as many as asked" {
+  todo = "# todo\n- [x] add a Text method is_digits() that says yes\n- [!] add a Number method is_even() that says whether a whole number is even, giving a Bool (2026-11-14, 2026-11-14-2)\n- [!] add a Text method surround(left: Text, right: Text) that gives the text with left before it and right after it (2026-11-14, 2026-11-14-3)\n- [ ] add a Number method sign() that gives -1, 0 or 1\n"
+  runs: Kept[] = [{request: "add a Number method is_even() that says whether a whole number is even, giving a Bool", run: "2026-11-14-2", passed: false, why: "a check failed", seconds: 300, files: []}]
+  g = gap_tasks({todo: todo, runs: runs, episodes: [], most: 5})
+  expect g.lines.length() == 2
+  expect g.lines[0].starts_with("- [ ] add a function is_even(n: Number) to kosika/std/numbers.kos")
+  expect g.moved[0] == "add a Number method is_even() that says whether a whole number is even, giving a Bool"
+  expect g.notes[0].contains("1 failed runs in coders.kl, last: a check failed")
+  expect gap_tasks({todo: todo, runs: runs, episodes: [], most: 1}).lines.length() == 1
+  again = gap_tasks({todo: todo + g.lines.join("\n"), runs: runs, episodes: [], most: 5})
+  expect again.lines.is_empty()
+}
+
+test "a drawing that failed twice on the Brain's timeline becomes a request with the ask as its test" {
+  eps = [gap_test_ep("ai", "Plot F = (-y, x)", "draw: not drawn (no drawing came back)", "failed"),
+         gap_test_ep("designs", "draw a hat", "no drawing", "failed"),
+         gap_test_ep("ai", "Plot F = (-y, x)", "draw: Not drawn", "failed"),
+         gap_test_ep("ai", "What is 2+2?", "4", "passed")]
+  expect drawing_asks(eps) == ["Plot F = (-y, x)"]
+  g = gap_tasks({todo: "", runs: [], episodes: eps, most: 5})
+  expect g.lines.length() == 1
+  expect g.lines[0].contains("draw the ask \"Plot F = (-y, x)\"")
+  expect g.lines[0].contains("pl_for(\"Plot F = (-y, x)\").problems.is_empty() is true")
+  expect gap_tasks({todo: g.lines[0], runs: [], episodes: eps, most: 5}).lines.is_empty()
+}
