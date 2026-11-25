@@ -650,6 +650,84 @@ def one_window(query: str) -> dict:
     return found[0]
 
 
+OVERLAY = HERE / "overlay.py"
+_overlay_mod = None
+
+
+def _overlay():
+    """overlay.py beside this file, loaded once, its window started if it is
+    not already on the screen (it keeps itself to one)."""
+    global _overlay_mod
+    if _overlay_mod is None and OVERLAY.exists():
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("kosika_overlay", OVERLAY)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["kosika_overlay"] = module
+        spec.loader.exec_module(module)
+        _overlay_mod = module
+        flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        subprocess.Popen([sys.executable, str(OVERLAY), "--quit-after", "120"], creationflags=flags,
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return _overlay_mod
+
+
+def glow(doing: str, x: int | None = None, y: int | None = None) -> None:
+    """The screen's edge lit in this agent's colour, saying what it does.
+    Only the program's name is said, never a window's title."""
+    try:
+        o = _overlay()
+        if o is not None:
+            o.beat(AGENT, doing, None, x, y)
+    except Exception:  # the glow is to be seen; an action never fails for it
+        pass
+
+
+def glow_off() -> None:
+    """The glow is left to fade by itself (overlay.kos's `fresh`, 6 s): long
+    enough to see the action finish, and a task's next step, approved soon
+    after, keeps it lit rather than flickering off between steps."""
+    try:
+        o = _overlay()
+        if o is not None:
+            o.beat(AGENT, "done")
+    except Exception:
+        pass
+
+
+def title_spot(handle: int) -> tuple[int, int]:
+    """The middle of a window's title bar."""
+    box = wintypes.RECT()
+    user32.GetWindowRect(handle, ctypes.byref(box))
+    return (box.left + box.right) // 2, box.top + 16
+
+
+def close_spot(handle: int) -> tuple[int, int]:
+    """Where a window's X button is: its top right corner."""
+    box = wintypes.RECT()
+    user32.GetWindowRect(handle, ctypes.byref(box))
+    return box.right - 24, box.top + 16
+
+
+def shown_acting(spot: tuple[int, int], doing: str) -> None:
+    """Before an action on a window: the glow on, the agent's own pointer
+    gliding to where it acts and pressing there. The person's mouse is not
+    moved."""
+    global OWN_POINTER_ONLY
+    OWN_POINTER_ONLY = True
+    glow(doing, *spot)
+    point_at(spot[0], spot[1], "idle")
+    time.sleep(0.5)
+    guard()
+    point_at(spot[0], spot[1], "press")
+
+
+def shown_done(spot: tuple[int, int]) -> None:
+    time.sleep(0.35)
+    point_at(spot[0], spot[1], "idle")
+    glow_off()
+
+
 def work_area() -> tuple[int, int, int, int]:
     box = wintypes.RECT()
     user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(box), 0)  # SPI_GETWORKAREA
@@ -849,32 +927,50 @@ def main(args: list[str]) -> None:
     elif what in ("switch", "minimise", "maximise", "restore") and rest:
         w = one_window(" ".join(rest))
         handle = w["handle"]
+        if w["minimised"]:
+            user32.ShowWindow(handle, 9)  # shown first, so the pointer can go to it
+            time.sleep(0.3)
+        spot = title_spot(handle)
+        shown_acting(spot, f"{what} {w['program']}")
         if what == "switch":
             if not to_front(handle):
                 print(f"{w['title']} could not be brought to the front")
+                glow_off()
                 sys.exit(4)
         else:
             user32.ShowWindow(handle, {"minimise": 6, "maximise": 3, "restore": 9}[what])
             time.sleep(0.3)
+        shown_done(spot)
         print(f"{what} {w['title']} ({w['program']})")
     elif what == "place" and len(rest) > 1 and rest[-1] in SPOTS:
         w = one_window(" ".join(rest[:-1]))
         handle = w["handle"]
         user32.ShowWindow(handle, 9)  # restore: a maximised window does not move
+        time.sleep(0.2)
+        shown_acting(title_spot(handle), f"placing {w['program']} at the {rest[-1]}")
         x, y, wd, ht = spot_box(rest[-1])
         user32.MoveWindow(handle, x, y, wd, ht, True)
         time.sleep(0.3)
+        point_at(*title_spot(handle), "idle")  # the pointer goes with the window
+        shown_done(title_spot(handle))
         print(f"placed {w['title']} ({w['program']}) at the {rest[-1]}: {x},{y} {wd}x{ht}")
     elif what == "close" and rest:
         # The way its X button closes it: a program with unsaved work still
         # asks the person, and nothing is ever ended by force.
         w = one_window(" ".join(rest))
+        if w["minimised"]:
+            user32.ShowWindow(w["handle"], 9)
+            time.sleep(0.3)
+        spot = close_spot(w["handle"])
+        shown_acting(spot, f"closing {w['program']}")
         user32.PostMessageW(w["handle"], WM_CLOSE, 0, 0)
         for _ in range(25):
             time.sleep(0.2)
             if not user32.IsWindow(w["handle"]) or not user32.IsWindowVisible(w["handle"]):
+                shown_done(spot)
                 print(f"closed {w['title']} ({w['program']})")
                 return
+        shown_done(spot)
         print(f"{w['title']} is still open: it may be asking you to save, so it was left for you")
         sys.exit(2)
     elif what == "launch" and rest:
@@ -884,13 +980,19 @@ def main(args: list[str]) -> None:
             print(f"no single app in the Start menu is called {' '.join(rest)!r}")
             sys.exit(2)
         before = {w["handle"] for w in open_windows()}
+        ax, ay, aw, ah = work_area()
+        middle_of_screen = (ax + aw // 2, ay + ah // 2)
+        shown_acting(middle_of_screen, f"starting {named[0]}")
         subprocess.Popen(["explorer.exe", "shell:AppsFolder\\" + named[1]])
         for _ in range(50):
             time.sleep(0.3)
             new = [w for w in open_windows() if w["handle"] not in before]
             if new:
+                point_at(*title_spot(new[0]["handle"]), "idle")  # to the new window
+                shown_done(title_spot(new[0]["handle"]))
                 print(f"launched {named[0]}: {new[0]['title']}")
                 return
+        shown_done(middle_of_screen)
         print(f"asked Windows to start {named[0]}; no new window showed yet")
     elif what == "start-apps":
         for name, _ in start_apps():
