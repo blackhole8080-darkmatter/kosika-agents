@@ -526,6 +526,47 @@ def swarm(size: int) -> None:
     print(f"Swarm of {len(members)}: {round(time.monotonic() - started)} s for all of them together.")
 
 
+
+def shared_engine(native: Path) -> Path | None:
+    """A kosika-native built from NATIVE, kept under WORK/.engine by the hash
+    of its Go sources, so coders building from the same studio share one.
+    The first coder builds it behind a lock folder; the others wait for it.
+    None when it cannot be built, and the coders build their own as before."""
+    import hashlib
+    import time
+    if not native.is_dir():
+        return None
+    digest = hashlib.sha256()
+    for path in sorted(native.glob("*.go")) + sorted(native.glob("go.*")):
+        digest.update(path.name.encode())
+        digest.update(path.read_bytes())
+    key = digest.hexdigest()[:16]
+    folder = WORK / ".engine"
+    folder.mkdir(exist_ok=True)
+    engine = folder / (f"kosika-native-{key}" + (".exe" if os.name == "nt" else ""))
+    lock = folder / f"{key}.lock"
+    for _ in range(120):
+        if engine.is_file():
+            return engine
+        try:
+            lock.mkdir()
+        except FileExistsError:
+            time.sleep(5)
+            continue
+        try:
+            building = engine.with_name(engine.name + ".part")
+            made = subprocess.run(["go", "-C", str(native), "build", "-o", str(building), "."],
+                                  capture_output=True, text=True, timeout=900)
+            if made.returncode == 0 and building.is_file():
+                building.replace(engine)
+                return engine
+            return None
+        except (OSError, subprocess.SubprocessError):
+            return None
+        finally:
+            shutil.rmtree(lock, ignore_errors=True)
+    return None
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
@@ -581,6 +622,13 @@ def main() -> None:
     before.mkdir(parents=True)
     copy_studio(before)
     shutil.copytree(before, after)
+    # One Go engine for every coder of the swarm, built once from this copy
+    # of studio. A std task tests its edited .kos file by path with it, so no
+    # coder rebuilds the engine (four at once ran past the 180-second limit
+    # on 2026-11-20).
+    engine = shared_engine(before / "native")
+    if engine is not None:
+        os.environ["KOSIKA_STD_ENGINE"] = str(engine)
 
     router = start_router()
     asked = text
