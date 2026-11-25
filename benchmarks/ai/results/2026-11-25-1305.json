@@ -1,0 +1,997 @@
+{
+ "model": "kosika-virtual:soft",
+ "score": 17,
+ "of": 20,
+ "by_kind": {
+  "code": "4/5",
+  "maths": "7/7",
+  "project": "1/3",
+  "question": "5/5"
+ },
+ "median_seconds": 7.1,
+ "total_seconds": 373.9,
+ "model_calls": 131,
+ "calls_per_pass": 7.7,
+ "model_seconds": 255.9,
+ "web_reads": 3,
+ "overclaims": 0,
+ "label": "strict check, cold",
+ "rows": [
+  {
+   "id": "pct",
+   "kind": "maths",
+   "passed": true,
+   "why": "",
+   "seconds": 11.6,
+   "model_calls": 9,
+   "by_model": {
+    "planner": 1,
+    "counter": 2,
+    "parter": 1,
+    "thinker": 2,
+    "coverer": 2,
+    "writer": 1
+   },
+   "model_seconds": 11.0,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "What is 18% of 2450, and is it more than 400?",
+    "kind": "maths",
+    "goal": "Determine 18% of 2450 and compare it to 400",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "calc",
+      "what": "Calculate 18% of 2450",
+      "answer": "eighteen percent of 2450: 0.18*2450 = 441",
+      "check": "computed by Kosika; two formulas written apart gave the same number",
+      "ok": true,
+      "ran": true
+     },
+     {
+      "n": 2,
+      "tool": "think",
+      "what": "Decide if that number is greater than 400",
+      "answer": "To answer the question step by step:\n\n1. Compute 18% of 2450:  \n   18% of 2450 = 0.18 \u00d7 2450 = **441**.\n\n2. Result is 441.\n\n3. 441 is greater than 400.\n\nTherefore, 18% of 2450 is 441, and that number is indeed more than 400.",
+      "check": "checked part by part: a second model quoted where the answer gives each of the 3 parts it needs (Compute 18% of 2450; Result is 441; 441 is greater than 400), and Kosika found every quote in the answer on the second try, after the first was sent back",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "18% of 2450 is 0.18\u202f\u00d7\u202f2450\u202f=\u202f441, which is indeed more than 400.",
+    "passed": 2,
+    "failed": 0,
+    "note": "All 2 steps passed their checks.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, parter, coverer"
+  },
+  {
+   "id": "train",
+   "kind": "maths",
+   "passed": true,
+   "why": "",
+   "seconds": 2.8,
+   "model_calls": 6,
+   "by_model": {
+    "planner": 1,
+    "counter": 4,
+    "writer": 1
+   },
+   "model_seconds": 2.1,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "A train goes 180 km in 2.5 hours. What is its speed, and how long would it take to go 420 km at that speed?",
+    "kind": "maths",
+    "goal": "Compute the train\u2019s speed and the travel time for 420 km at that speed.",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "calc",
+      "what": "Calculate the speed in km/h as distance divided by time.",
+      "answer": "speed in km/h: 180/2.5 = 72",
+      "check": "computed by Kosika; two formulas written apart gave the same number",
+      "ok": true,
+      "ran": true
+     },
+     {
+      "n": 2,
+      "tool": "calc",
+      "what": "Calculate the travel time for 420 km using the derived speed.",
+      "answer": "time to travel 420 km at the derived speed: 420/(180/2.5) = 5.833333",
+      "check": "computed by Kosika; two formulas written apart gave the same number",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "The speed is 72\u202fkm/h.  \nIt would take 5.833333\u202fhours to travel 420\u202fkm at that speed.",
+    "passed": 2,
+    "failed": 0,
+    "note": "All 2 steps passed their checks.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, parter, coverer"
+  },
+  {
+   "id": "tip",
+   "kind": "maths",
+   "passed": true,
+   "why": "",
+   "seconds": 2.6,
+   "model_calls": 6,
+   "by_model": {
+    "planner": 1,
+    "counter": 4,
+    "writer": 1
+   },
+   "model_seconds": 2.1,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "A meal costs 640 kr. How much is a 15% tip, and what is the total?",
+    "kind": "maths",
+    "goal": "Compute a 15% tip for a 640 kr meal and the resulting total.",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "calc",
+      "what": "Calculate the 15% tip amount.",
+      "answer": "fifteen percent of 640 kr: 0.15*640 = 96",
+      "check": "computed by Kosika; two formulas written apart gave the same number",
+      "ok": true,
+      "ran": true
+     },
+     {
+      "n": 2,
+      "tool": "calc",
+      "what": "Add the tip to the original meal cost to obtain the total.",
+      "answer": "total cost including tip: 640+0.15*640 = 736",
+      "check": "computed by Kosika; two formulas written apart gave the same number",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "The 15% tip is 96\u202fkr.  \nThe total cost is 736\u202fkr.",
+    "passed": 2,
+    "failed": 0,
+    "note": "All 2 steps passed their checks.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, parter, coverer"
+  },
+  {
+   "id": "circle",
+   "kind": "maths",
+   "passed": true,
+   "why": "",
+   "seconds": 3.0,
+   "model_calls": 4,
+   "by_model": {
+    "planner": 1,
+    "counter": 2,
+    "writer": 1
+   },
+   "model_seconds": 2.4,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "What is the area of a circle with radius 7 cm?",
+    "kind": "question",
+    "goal": "Calculate the area of a circle with radius 7 cm",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "calc",
+      "what": "Compute area using the formula \u03c0\u202f\u00d7\u202fr\u00b2 with r=7 cm",
+      "answer": "area of a circle with radius 7 cm: pi*7^2 = 153.93804",
+      "check": "computed by Kosika; two formulas written apart gave the same number",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "The area is 153.93804.",
+    "passed": 1,
+    "failed": 0,
+    "note": "The one step passed its check.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, parter, coverer"
+  },
+  {
+   "id": "average",
+   "kind": "maths",
+   "passed": true,
+   "why": "",
+   "seconds": 2.6,
+   "model_calls": 4,
+   "by_model": {
+    "planner": 1,
+    "counter": 2,
+    "writer": 1
+   },
+   "model_seconds": 2.2,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "What is the average of 12, 17, 23 and 40?",
+    "kind": "maths",
+    "goal": "Calculate the average of 12, 17, 23 and 40",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "calc",
+      "what": "Compute the average of the four numbers",
+      "answer": "average of the four numbers: (12+17+23+40)/4 = 23",
+      "check": "computed by Kosika; two formulas written apart gave the same number",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "The average of 12, 17, 23 and 40 is 23.",
+    "passed": 1,
+    "failed": 0,
+    "note": "The one step passed its check.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, parter, coverer"
+  },
+  {
+   "id": "compound",
+   "kind": "maths",
+   "passed": true,
+   "why": "",
+   "seconds": 2.7,
+   "model_calls": 4,
+   "by_model": {
+    "planner": 1,
+    "counter": 2,
+    "writer": 1
+   },
+   "model_seconds": 2.3,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "If I save 10000 kr at 5% interest a year, compounded yearly, how much do I have after 3 years?",
+    "kind": "maths",
+    "goal": "Calculate the amount after 3 years for 10,000\u202fkr at 5% annual interest compounded yearly.",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "calc",
+      "what": "Compute 10,000\u202fkr\u202f\u00d7\u202f(1\u202f+\u202f0.05)^3",
+      "answer": "amount after 3 years: 10000*(1+0.05)^3 = 11576.25",
+      "check": "computed by Kosika; two formulas written apart gave the same number",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "11576.25",
+    "passed": 1,
+    "failed": 0,
+    "note": "The one step passed its check.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, parter, coverer"
+  },
+  {
+   "id": "vowels",
+   "kind": "code",
+   "passed": true,
+   "why": "",
+   "seconds": 3.0,
+   "model_calls": 4,
+   "by_model": {
+    "planner": 1,
+    "tester": 1,
+    "coder": 1,
+    "writer": 1
+   },
+   "model_seconds": 2.6,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "Write a function in Kosika that counts the vowels in a text.",
+    "kind": "code",
+    "goal": "Write a Kosika function that counts the vowels in a given text string.",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "code",
+      "what": "Create a Kosika function `countVowels(text)` that iterates over the characters of `text` and returns the number of vowels (a, e, i, o, u, case\u2011insensitive).",
+      "answer": "fn countVowels(text: Text) -> Number {\n    var count = 0\n    var vowels = [\"a\", \"e\", \"i\", \"o\", \"u\"]\n    for ch in text.lower().chars() {\n        if vowels.contains(ch) {\n            count = count + 1\n        }\n    }\n    return count\n}\n\ntest \"countVowels basic behavior\" {\n  expect countVowels(\"hello\") == 2\n  expect countVowels(\"AEIOU\") == 5\n  expect countVowels(\"sky\") == 0\n  expect countVowels(\"Banana\") == 3\n  expect countVowels(\"\") == 0\n}\n",
+      "check": "the engine checked the program and ran 5 checks, written before the code: all passed",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "fn countVowels(text: Text) -> Number {\n    var count = 0\n    var vowels = [\"a\", \"e\", \"i\", \"o\", \"u\"]\n    for ch in text.lower().chars() {\n        if vowels.contains(ch) {\n            count = count + 1\n        }\n    }\n    return count\n}",
+    "passed": 1,
+    "failed": 0,
+    "note": "The one step passed its check.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, parter, coverer"
+  },
+  {
+   "id": "reverse",
+   "kind": "code",
+   "passed": false,
+   "why": "no code step passed its check",
+   "seconds": 20.6,
+   "model_calls": 8,
+   "by_model": {
+    "planner": 1,
+    "tester": 2,
+    "coder": 4,
+    "replanner": 1
+   },
+   "model_seconds": 6.5,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "Write a function in Kosika that reverses the words of a sentence.",
+    "kind": "code",
+    "goal": "Write a Kosika function that reverses the words of a sentence.",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "code",
+      "what": "Create a Kosika function `reverseWords(sentence: Text) -> Text` that splits the sentence into words, reverses the order, and joins them back into a string.",
+      "answer": "fn reverseWords(sentence: Text) -> Text {\n    // Split on spaces\n    let parts = sentence.split(\" \")\n    var words: Text[] = []\n    for w in parts {\n        if w != \"\" {\n            words.append(w)\n        }\n    }\n\n    // Reverse the words list\n    var reversed: Text[] = []\n    var i = words.length() - 1\n    while i >= 0 {\n        reversed.append(words[i])\n        i = i - 1\n    }\n\n    // Join reversed words with a single space\n    var result = \"\"\n    var first = true\n    for w in reversed {\n        if first {\n            result = w\n            first = false\n        } else {\n            result = result + \" \" + w\n        }\n    }\n    return result\n}\n\ntest \"reverseWords basic and edge cases\" {\n  expect reverseWords(\"hello world\") == \"world hello\"\n  expect reverseWords(\"one two three\") == \"three two one\"\n  expect reverseWords(\"  leading and trailing  \") == \"trailing and leading\"\n  expect reverseWords(\"\") == \"\"\n  expect reverseWords(\"single\") == \"single\"\n}\n",
+      "check": "still failing: kosika_ai_answer.kos: its test \"reverseWords basic and edge cases\" fails at line 34: expected reverseWords(\"hello world\") == \"world hello\" (left is \"\", right is \"world hello\")",
+      "ok": false,
+      "ran": true
+     },
+     {
+      "n": 5,
+      "tool": "code",
+      "what": "Implement a Kosika function `reverseWords(sentence: Text) -> Text` using built-in list operations. It should correctly handle multiple spaces and trim correctly by first tokenizing on non-space delimiters. Add tests covering basic and edge cases.",
+      "answer": "fn reverseWords(sentence: Text) -> Text {\n    var words: Text[] = []\n    var current = \"\"\n    for i in 0..=sentence.length() {\n        var ch = \"\"\n        if i < sentence.length() {\n            ch = sentence.substring(i, i + 1)\n        }\n        if ch == \" \" or ch == \"\" {\n            if current != \"\" {\n                words.append(current)\n                current = \"\"\n            }\n        } else {\n            current = current + ch\n        }\n    }\n    var reversed: Text[] = []\n    var i = words.length() - 1\n    while i >= 0 {\n        reversed.append(words[i])\n        i = i - 1\n    }\n    var result = \"\"\n    for i in 0..=reversed.length() {\n        if i < reversed.length() {\n            if i == 0 {\n                result = reversed[i]\n            } else {\n                result = result + \" \" + reversed[i]\n            }\n        }\n    }\n    return result\n}\n\ntest \"the ask's own tests\" {\n  expect reverseWords(\"the quick brown fox\") == \"fox brown quick the\"\n  expect reverseWords(\"  hello   world  \") == \"world hello\"\n  expect reverseWords(\"\") == \"\"\n  expect reverseWords(\"single\") == \"single\"\n  expect reverseWords(\"   a  b   c   \") == \"c b a\"\n}\n",
+      "check": "still failing: kosika_ai_answer.kos: it is not valid Kosika: Expected identifier at 4:16",
+      "ok": false,
+      "ran": true
+     }
+    ],
+    "answer": "Kosika AI could not do this ask: no step gave an answer that passed its check.",
+    "passed": 0,
+    "failed": 2,
+    "note": "0 of 2 steps passed their checks; the rest are marked unchecked, and the reply says so. The planner was shown the checked plan of a similar earlier ask.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, parter, coverer"
+  },
+  {
+   "id": "fizz",
+   "kind": "code",
+   "passed": true,
+   "why": "",
+   "seconds": 7.8,
+   "model_calls": 4,
+   "by_model": {
+    "planner": 1,
+    "tester": 1,
+    "coder": 1,
+    "writer": 1
+   },
+   "model_seconds": 7.4,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "Write a function in Kosika that gives fizz, buzz, fizzbuzz or the number as text for a number.",
+    "kind": "code",
+    "goal": "Write a Kosika function that returns \"fizz\", \"buzz\", \"fizzbuzz\" or the number as text for a given integer.",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "code",
+      "what": "Provide a Kosika function fizzBuzz(num: Number) -> Text that implements the FizzBuzz logic.",
+      "answer": "fn fizzBuzz(n: Number) -> Text {\n  if n % 3 == 0 and n % 5 == 0 {\n    return \"fizzbuzz\"\n  } else if n % 3 == 0 {\n    return \"fizz\"\n  } else if n % 5 == 0 {\n    return \"buzz\"\n  }\n  return n.to_text()\n}\n\ntest \"fizzBuzz function\" {\n  expect fizzBuzz(3) == \"fizz\"\n  expect fizzBuzz(5) == \"buzz\"\n  expect fizzBuzz(15) == \"fizzbuzz\"\n  expect fizzBuzz(7) == \"7\"\n  expect fizzBuzz(0) == \"fizzbuzz\"\n}\n",
+      "check": "the engine checked the program and ran 5 checks, written before the code: all passed",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "All tests have passed. The function fizzBuzz works correctly for 3 \u2192 \"fizz\", 5 \u2192 \"buzz\", 15 \u2192 \"fizzbuzz\", 7 \u2192 \"7\", and 0 \u2192 \"fizzbuzz\".",
+    "passed": 1,
+    "failed": 0,
+    "note": "The one step passed its check.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, parter, coverer"
+  },
+  {
+   "id": "prime",
+   "kind": "code",
+   "passed": true,
+   "why": "",
+   "seconds": 12.3,
+   "model_calls": 5,
+   "by_model": {
+    "planner": 1,
+    "tester": 1,
+    "coder": 2,
+    "writer": 1
+   },
+   "model_seconds": 11.8,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "Write a function in Kosika that says whether a number is prime.",
+    "kind": "code",
+    "goal": "Write a function in Kosika that says whether a number is prime.",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "code",
+      "what": "A Kosika function isPrime(n: Number) -> Boolean that returns true if n is prime, otherwise false, with accompanying tests.",
+      "answer": "fn isPrime(n: Number) -> Bool {\n    if n < 2 {\n        return false\n    }\n    if n == 2 {\n        return true\n    }\n    if n % 2 == 0 {\n        return false\n    }\n    var i = 3\n    while i * i <= n {\n        if n % i == 0 {\n            return false\n        }\n        i = i + 2\n    }\n    return true\n}\n\ntest \"the ask's own tests\" {\n  expect isPrime(5) == true\n  expect isPrime(4) == false\n  expect isPrime(2) == true\n  expect isPrime(1) == false\n  expect isPrime(0) == false\n  expect isPrime(-7) == false\n}\n",
+      "check": "the engine checked the program and ran 6 checks, written before the code: all passed",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "fn isPrime(n: Number) -> Bool {\n    if n < 2 {\n        return false\n    }\n    if n == 2 {\n        return true\n    }\n    if n % 2 == 0 {\n        return false\n    }\n    var i = 3\n    while i * i <= n {\n        if n % i == 0 {\n            return false\n        }\n        i = i + 2\n    }\n    return true\n}\n\ntest \"the ask's own tests\" {\n  expect isPrime(5) == true\n  expect isPrime(4) == false\n  expect isPrime(2) == true\n  expect isPrime(1) == false\n  expect isPrime(0) == false\n  expect isPrime(-7) == false\n}",
+    "passed": 1,
+    "failed": 0,
+    "note": "The one step passed its check.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, parter, coverer"
+  },
+  {
+   "id": "largest",
+   "kind": "code",
+   "passed": true,
+   "why": "",
+   "seconds": 7.1,
+   "model_calls": 4,
+   "by_model": {
+    "planner": 1,
+    "tester": 1,
+    "coder": 1,
+    "writer": 1
+   },
+   "model_seconds": 6.7,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "Write a function in Kosika that gives the largest number in a list, and 0 for an empty list.",
+    "kind": "code",
+    "goal": "Write a Kosika function that returns the largest number in a list, and 0 for an empty list.",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "code",
+      "what": "Implement fn maxOrZero(list: List<Number>) -> Number with tests for typical cases and empty list.",
+      "answer": "fn maxOrZero(list: Number[]) -> Number {\n  if list.length() == 0 {\n    return 0\n  }\n  var max = list[0]\n  for n in list {\n    if n > max {\n      max = n\n    }\n  }\n  return max\n}\n\ntest \"the ask's own tests\" {\n  expect maxOrZero([5, 3, 9, 1]) == 9\n  expect maxOrZero([-2, -5, -1]) == -1\n  expect maxOrZero([7]) == 7\n  expect maxOrZero([3.5, 2.1]) == 3.5\n  expect maxOrZero([]) == 0\n}\n",
+      "check": "the engine checked the program and ran 5 checks, written before the code: all passed",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "fn maxOrZero(list: Number[]) -> Number {\n  if list.length() == 0 {\n    return 0\n  }\n  var max = list[0]\n  for n in list {\n    if n > max {\n      max = n\n    }\n  }\n  return max\n}\n\ntest \"the ask's own tests\" {\n  expect maxOrZero([5, 3, 9, 1]) == 9\n  expect maxOrZero([-2, -5, -1]) == -1\n  expect maxOrZero([7]) == 7\n  expect maxOrZero([3.5, 2.1]) == 3.5\n  expect maxOrZero([]) == 0\n}",
+    "passed": 1,
+    "failed": 0,
+    "note": "The one step passed its check.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, parter, coverer"
+  },
+  {
+   "id": "graphs",
+   "kind": "project",
+   "passed": false,
+   "why": "the answer lacks day 1 / day one / week 1",
+   "seconds": 106.9,
+   "model_calls": 11,
+   "by_model": {
+    "planner": 1,
+    "finder": 1,
+    "reader": 1,
+    "parter": 1,
+    "thinker": 2,
+    "replanner": 1,
+    "tester": 1,
+    "coder": 2,
+    "writer": 1
+   },
+   "model_seconds": 54.8,
+   "web_reads": 1,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "Plan how I can learn graph theory in two weeks, with a short daily schedule.",
+    "kind": "project",
+    "goal": "Create a two\u2011week daily learning schedule for graph theory",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "look",
+      "what": "Find a concise introductory graph theory resource (e.g., Wikipedia page \"Graph theory\" or a short online tutorial) that covers basic definitions, terminology, and key concepts.",
+      "answer": "The provided page serves as a concise introductory resource covering the definition of graph theory, basic terminology (vertices, edges, nodes, arcs, links, lines), and key concepts such as undirected, directed, mixed, simple, multigraph, and weighted graphs. It also mentions the history, including Euler's paper on the Seven Bridges of K\u00f6nigsberg, and the four color problem.\nSource: Graph theory - Wikipedia (https://en.wikipedia.org/wiki/Graph_theory): \"In mathematics and computer science, graph theory is the study of graphs, which are mathematical structures used to model pairwise relations between objects.\"",
+      "check": "every passage quoted (3) was found word for word on https://en.wikipedia.org/wiki/Graph_theory",
+      "ok": true,
+      "ran": true
+     },
+     {
+      "n": 2,
+      "tool": "think",
+      "what": "Design a daily schedule dividing the two weeks into focused topics (e.g., fundamentals, trees, connectivity, traversals, matching, planarity) with 30\u201145\u202fminute study blocks and brief practice problems each day.",
+      "answer": "To plan a two-week graph theory study, create a daily schedule that outlines the structure, assigns specific topics, allocates time blocks, and includes practice problems for each day.\n\nDay 1: Foundations and Terminology. Allocate 30 minutes to read intro definitions and terms like vertices and edges. Practice by identifying 5 graph types in real-life scenarios.\nDay 2: Graph Representations. Allocate 30 minutes to study adjacency lists and matrices. Practice by converting a small graph into both forms.\nDay 3: Degree Concepts. Allocate 35 minutes to learn in-degree and out-degree. Practice by computing degrees for a directed graph.\nDay 4: Paths and Cycles. Allocate 30 minutes to review definitions of paths and cycles. Practice by finding a Hamiltonian cycle in a 6-node graph.\nDay 5: Connectivity. Allocate 35 minutes to study connected components. Practice by determining the connected components of a given graph.\nDay 6: Trees. Allocate 30 minutes to understand tree properties. Practice by proving a tree with n vertices has n-1 edges.\nDay 7: Spanning Trees. Allocate 40 minutes to learn Minimum Spanning Tree basics. Practice by running Prim's algorithm on a weighted graph.\nDay 8: Graph Traversal. Allocate 35 minutes to study Depth-First Search (DFS) and Breadth-First Search (BFS). Practice by performing a DFS and listing the order.\nDay 9: Bipartite Graphs. Allocate 30 minutes to learn bipartite characterization. Practice by checking if a given graph is bipartite.\nDay 10: Matching. Allocate 45 minutes to understand maximum matching concepts. Practice by finding a maximum matching in a bipartite graph.\nDay 11: Planarity. Allocate 35 minutes to study Kuratowski\u2019s theorem. Practice by determining if K5 is planar.\nDay 12: Graph Coloring. Allocate 30 minutes to learn basic graph coloring. Practice by 3-coloring a given planar graph.\nDay 13: Flows and Cuts. Allocate 40 minutes to study network flows and min-cut. Practice by applying max-flow/min-cut on a sample network.\nDay 14: Review and Assessment. Allocate 45 minutes to summarize all concepts. Practice by completing a self-test covering all topics.",
+      "check": "not checked: the answer leaves out: Outline daily schedule; Assign topics; Allocate time blocks; Include practice problems",
+      "ok": false,
+      "ran": true
+     },
+     {
+      "n": 3,
+      "tool": "draw",
+      "what": "Plan how I can learn graph theory in two weeks, with a short daily schedule.",
+      "answer": "Kosika Designs could not draw this: a graph needs one variable; this formula has Plan, how, I, can, learn, graph, theory, in, two, weeks",
+      "check": "not drawn",
+      "ok": false,
+      "ran": true
+     },
+     {
+      "n": 5,
+      "tool": "code",
+      "what": "Write a Python program that defines a dictionary mapping 14 days to specific graph theory topics (fundamentals, trees, connectivity, etc.), allocates 30-45 minute blocks, and includes 2 practice problems per day. The program should output the formatted schedule as a string.",
+      "answer": "fn generate_schedule() -> Text {\n  let topics = [\n    [\"Foundations and Terminology\", 30, \"Identify 5 graph types in real-life scenarios; Draw 3 different simple graphs\"],\n    [\"Graph Representations\", 30, \"Convert a small 4-node graph into adjacency list and matrix; Draw a graph given its adjacency matrix\"],\n    [\"Degree Concepts\", 35, \"Compute degrees for a 6-node directed graph; Explain the relationship between degrees and edges\"],\n    [\"Paths and Cycles\", 30, \"Find a Hamiltonian cycle in a 6-node graph; Identify all cycles in a given undirected graph\"],\n    [\"Connectivity\", 35, \"Determine connected components in a 5-node graph; Find a cut vertex in a connected graph\"],\n    [\"Trees and Spanning Trees\", 40, \"Verify if a given graph is a tree; Find a spanning tree for a connected graph\"],\n    [\"Shortest Paths\", 45, \"Apply Dijkstra's algorithm to a 5-node weighted graph; Explain the difference between BFS and Dijkstra\"],\n    [\"Review and Practice\", 30, \"Solve a mixed review problem set; Quiz self on core definitions\"],\n    [\"Eulerian Paths and Circuits\", 35, \"Determine if a graph has an Eulerian circuit; Find an Eulerian path in a connected graph\"],\n    [\"Planar Graphs\", 40, \"Check if a graph is planar; Apply Euler's formula V - E + F = 2 to a planar graph\"],\n    [\"Graph Coloring\", 35, \"Calculate the chromatic number of a small graph; 3-color a planar graph\"],\n    [\"Flows and Cuts\", 40, \"Find the max flow in a small network; Identify a minimum cut\"],\n    [\"Matching and Bipartite Graphs\", 35, \"Find a maximum matching in a bipartite graph; Identify if a graph is bipartite\"],\n    [\"Final Comprehensive Review\", 45, \"Solve a full problem set covering all topics; Explain key theorems and algorithms\"]\n  ]\n  var result = \"Two-Week Graph Theory Schedule:\\n\"\n  var day = 1\n  for topic in topics {\n    result = result + \"Day \" + day.to_text() + \": \" + topic[0] + \" (\" + topic[1].to_text() + \" min)\\n\"\n    result = result + \"Practice: \" + topic[2] + \"\\n\"\n    day = day + 1\n  }\n  return result\n}\n\ntest \"schedule generation\" {\n  expect generate_schedule() is Text\n  expect generate_schedule() contains \"Day 1:\"\n  expect generate_schedule() contains \"Day 14:\"\n  expect len(generate_schedule()) > 0\n}\n",
+      "check": "still failing: kosika_ai_answer.kos: it is not valid Kosika: Expected 'expect' at 29:30, got 'is'",
+      "ok": false,
+      "ran": true
+     }
+    ],
+    "answer": "Day\u202f1 \u2013 Foundations and Terminology \u2013 30\u202fminutes \u2013 practice: identify 5 graph types in real\u2011life scenarios.  \nDay\u202f2 \u2013 Graph Representations \u2013 30\u202fminutes \u2013 practice: convert a small graph to adjacency list and matrix.  \nDay\u202f3 \u2013 Degree Concepts \u2013 35\u202fminutes \u2013 practice: compute in\u2011degree and out\u2011degree for a directed graph.  \nDay\u202f4 \u2013 Paths and Cycles \u2013 30\u202fminutes \u2013 practice: find a Hamiltonian cycle in a 6\u2011node graph.  \nDay\u202f5 \u2013 Connectivity \u2013 35\u202fminutes \u2013 practice: determine the connected components of a given graph.  \n\n**Note:** Step\u202f2 (design daily schedule) is NOT checked, so the schedule above is a proposed plan and remains unchecked. Steps\u202f3 (draw) and\u202f5 (code) are also NOT checked.",
+    "passed": 1,
+    "failed": 3,
+    "note": "1 of 4 steps passed their checks; the rest are marked unchecked, and the reply says so.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, parter, coverer"
+  },
+  {
+   "id": "website",
+   "kind": "project",
+   "passed": true,
+   "why": "",
+   "seconds": 26.6,
+   "model_calls": 14,
+   "by_model": {
+    "planner": 1,
+    "parter": 1,
+    "thinker": 1,
+    "coverer": 1,
+    "tester": 2,
+    "coder": 4,
+    "finder": 1,
+    "reader": 1,
+    "replanner": 1,
+    "writer": 1
+   },
+   "model_seconds": 21.8,
+   "web_reads": 1,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "Plan the steps to build a small personal website for my projects.",
+    "kind": "project",
+    "goal": "Plan and create a small personal website to showcase my projects",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "think",
+      "what": "Outline the website structure, pages, and required features such as a homepage, projects gallery, and contact form",
+      "answer": "1. Define sitemap  \nA sitemap is a hierarchical outline of the main pages and sections of a website, showing how they relate to each other. It serves as a blueprint for navigation, content organization, and development.\n\n2. List pages and features  \n- **Home** \u2013 Welcome banner, brief bio, call\u2011to\u2011action.  \n- **Projects** \u2013 Gallery of projects with thumbnails, each linking to a detail page.  \n- **Project Detail** \u2013 Project title, description, images/video, tech stack, link to live demo or repo.  \n- **About** \u2013 Longer bio, skills, resume download.  \n- **Contact** \u2013 Contact form (name, email, message), optional phone/email, social links.  \n- **Footer** \u2013 Quick links, copyright notice, social icons.  \n\n3. Create page structure  \n- **Home**  \n  - Header (logo, navigation)  \n  - Hero section (image + tagline)  \n  - Intro paragraph  \n  - Featured projects preview  \n  - Footer  \n\n- **Projects**  \n  - Header  \n  - Filter/sort controls (optional)  \n  - Grid of project cards (thumbnail, title)  \n  - Footer  \n\n- **Project Detail**  \n  - Header  \n  - Project title and subtitle  \n  - Image gallery or video player  \n  - Description & key features  \n  - Tech stack icons  \n  - Links (live demo, GitHub)  \n  - Back to Projects button  \n  - Footer  \n\n- **About**  \n  - Header  \n  - Photo + bio  \n  - Skills list  \n  - Resume link  \n  - Footer  \n\n- **Contact**  \n  - Header  \n  - Contact form (fields, submit button)  \n  - Optional contact details  \n  - Footer  \n\n4. Draft navigation  \n- Top\u2011nav links: Home, Projects, About, Contact  \n- Active link styling on current page  \n- Responsive hamburger menu for mobile  \n- Footer links duplicate top\u2011nav for accessibility  \n- Breadcrumbs on Project Detail: Home > Projects > Project Title (optional)",
+      "check": "checked part by part: a second model quoted where the answer gives each of the 4 parts it needs (Define sitemap; List pages and features; Create page structure; Draft navigation), and Kosika found every quote in the answer",
+      "ok": true,
+      "ran": true
+     },
+     {
+      "n": 2,
+      "tool": "code",
+      "what": "Generate a simple Kosika HTML/CSS/JS template that implements the outlined pages and basic styling",
+      "answer": "fn generate_template() -> Text {\n    return \"<!DOCTYPE html><html><head><meta charset=\\\"UTF-8\\\"><title>My Site</title><style>body{font-family:sans-serif;margin:0;padding:0}header,footer{background:#333;color:#fff;padding:1rem}</style></head><body><header>Header</header><script>console.log(\\\"Loaded\\\");</script></body></html>\"\n}\n\ntest \"generate_template's basic output\" {\n  expect generate_template() contains \"<html>\"\n  expect generate_template() contains \"<head>\"\n  expect generate_template() contains \"<body>\"\n  expect generate_template() contains \"<style>\"\n  expect generate_template() contains \"<script>\"\n  expect generate_template() contains \"</html>\"\n}\n",
+      "check": "still failing: kosika_ai_answer.kos: it is not valid Kosika: Expected 'expect' at 6:30, got 'contains'",
+      "ok": false,
+      "ran": true
+     },
+     {
+      "n": 3,
+      "tool": "look",
+      "what": "Identify a free hosting service (e.g., GitHub Pages) and provide the deployment steps for the generated site",
+      "answer": "The page mentions that GitHub's industry includes Web host (GitHub Pages), confirming it is a hosting service, but it does not provide the specific deployment steps requested.\nSource: GitHub - Wikipedia (https://en.wikipedia.org/wiki/GitHub_Pages): \"Web host (GitHub Pages)\"",
+      "check": "every passage quoted (1) was found word for word on https://en.wikipedia.org/wiki/GitHub_Pages",
+      "ok": true,
+      "ran": true
+     },
+     {
+      "n": 5,
+      "tool": "code",
+      "what": "Provide a valid Kosika script named kosika_ai_answer.kos that uses the 'equal' assertion instead of 'contains' to test that the HTML template generation function produces the exact expected string, avoiding unsupported syntax.",
+      "answer": "fn generate_html_template(title: Text, projects: Text[]) -> Text {\n    var list_items = \"\"\n    for project in projects {\n        list_items = list_items + \"<li>\" + project + \"</li>\"\n    }\n    let html = \"<html><head><title>\" + title + \"</title></head><body><ul>\" + list_items + \"</ul></body></html>\"\n    return html\n}\n\ntest \"generate_html_template\" {\n  expect generate_html_template(\"My Site\", [\"Project A\", \"Project B\"]) == \"<html><head><title>My Site</title></head><body><ul><li>Project A</li><li>Project B</li></ul></body></html>\"\n  expect generate_html_template(\"Empty\", []) == \"<html><head><title>Empty</title></head><body><ul></ul></body></html>\"\n  expect generate_html_template(\"Single\", [\"Only\"]) == \"<html><head><title>Single</title></head><body><ul><li>Only</li></ul></body></html>\"\n}\n",
+      "check": "the engine checked the program and ran 3 checks, written before the code: all passed",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "To build a small personal website for your projects, follow these steps:\n\n1.  **Outline Structure and Pages** (Checked)\n    *   Define a sitemap for a Home page, Projects gallery, Project Detail pages, About page, and Contact form.\n    *   Include a Footer with quick links and copyright.\n\n2.  **Generate Template** (Unchecked)\n    *   Create a Kosika HTML/CSS/JS template implementing the outlined pages and basic styling.\n\n3.  **Identify Hosting** (Checked)\n    *   Use GitHub Pages as the free hosting service.\n    *   *Note: Specific deployment steps were not provided in the results.*\n\n4.  **Provide Test Script** (Checked)\n    *   Create a valid Kosika script named `kosika_ai_answer.kos` using the 'equal' assertion to test the HTML template.",
+    "passed": 3,
+    "failed": 1,
+    "note": "3 of 4 steps passed their checks; the rest are marked unchecked, and the reply says so.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, parter, coverer"
+  },
+  {
+   "id": "exam",
+   "kind": "project",
+   "passed": false,
+   "why": "no think step passed its check",
+   "seconds": 58.0,
+   "model_calls": 14,
+   "by_model": {
+    "planner": 1,
+    "parter": 2,
+    "thinker": 4,
+    "tester": 1,
+    "coder": 2,
+    "replanner": 1,
+    "coverer": 2,
+    "writer": 1
+   },
+   "model_seconds": 20.4,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "Help me build a one-week revision schedule for a discrete maths exam.",
+    "kind": "project",
+    "goal": "Create a one-week daily revision schedule for a discrete mathematics exam covering topics like logic, sets, combinatorics, graphs, and proofs.",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "think",
+      "what": "Draft a structured 7-day revision plan that allocates specific discrete maths topics to each day with clear, achievable goals.",
+      "answer": "Day\u202f1:  \n- **Topic:** Sets, Relations, and Functions  \n- **Goal:** Review set notation, practice drawing Venn diagrams, prove reflexivity/symmetry/transitivity of relations, and solve basic function mapping questions.  \n\nDay\u202f2:  \n- **Topic:** Logic and Propositional Calculus  \n- **Goal:** Build truth tables for compound statements, rewrite sentences into CNF/DNF, and prove logical equivalences using laws of logic.  \n\nDay\u202f3:  \n- **Topic:** Proof Techniques (Induction, Contrapositive, Contradiction)  \n- **Goal:** Complete at least two induction proofs, rewrite a statement in contrapositive form, and construct a simple proof by contradiction.  \n\nDay\u202f4:  \n- **Topic:** Counting Principles \u2013 Combinations and Permutations  \n- **Goal:** Memorize the formulas, solve problems involving permutations with/without repetition, and distinguish between combinations and permutations in sample questions.  \n\nDay\u202f5:  \n- **Topic:** Recurrence Relations and Generating Functions  \n- **Goal:** Derive a simple linear recurrence (e.g., Fibonacci), solve it using characteristic equations, and compute a coefficient from a basic generating function.  \n\nDay\u202f6:  \n- **Topic:** Graph Theory Basics \u2013 Vertices, Edges, Paths, Trees  \n- **Goal:** Identify tree properties, find shortest paths in a small graph, and prove a basic graph theorem such as \u201ca tree with n vertices has n\u20111 edges.\u201d  \n\nDay\u202f7:  \n- **Topic:** Review & Mock Test  \n- **Goal:** Take a full practice exam covering all topics, review mistakes, create a summary sheet of key formulas and theorems, and plan final quick\u2011revision sessions.",
+      "check": "not checked: the answer leaves out: Days; Topics; Goals",
+      "ok": false,
+      "ran": true
+     },
+     {
+      "n": 2,
+      "tool": "draw",
+      "what": "Help me build a one-week revision schedule for a discrete maths exam.",
+      "answer": "Kosika Designs could not draw this: a graph needs one variable; this formula has Help, me, build, a, one, week, revision, schedule",
+      "check": "not drawn",
+      "ok": false,
+      "ran": true
+     },
+     {
+      "n": 3,
+      "tool": "code",
+      "what": "Write a simple Kosika program that maps the days of the week to the discrete math topics from the plan.",
+      "answer": "fn get_topic(day: Text) -> Text {\n  let d = day.lower()\n  if d == \"monday\" { return \"Set Theory\" }\n  else if d == \"tuesday\" { return \"Logic\" }\n  else if d == \"wednesday\" { return \"Functions\" }\n  else if d == \"thursday\" { return \"Relations\" }\n  else if d == \"friday\" { return \"Graph Theory\" }\n  else { return \"\" }\n}\n\ntest \"schedule mapping\" {\n  expect get_topic(\"Monday\") == \"Set Theory\"\n  expect get_topic(\"Tuesday\") == \"Logic\"\n  expect get_topic(\"Wednesday\") == \"Functions\"\n  expect get_topic(\"Thursday\") == \"Relations\"\n  expect get_topic(\"Friday\") == \"Graph Theory\"\n  expect get_topic(\"\") == \"\"\n}\n",
+      "check": "still failing: kosika_ai_answer.kos: it is not valid Kosika: Expected 'return' at 9:1, got '}'",
+      "ok": false,
+      "ran": true
+     },
+     {
+      "n": 5,
+      "tool": "think",
+      "what": "Provide a concise 7\u2011day revision schedule listing each day, the discrete\u2011math topic(s) to cover, and a specific goal (e.g., \"Day\u202f1 \u2013 Sets & Functions \u2013 Review set notation, draw Venn diagrams, and solve three function mapping problems\").",
+      "answer": "| Day | Topic | Goal |\n| :--- | :--- | :--- |\n| Day 1 | Sets & Functions | Review set notation, draw 2 Venn diagrams, and solve 3 function-mapping problems. |\n| Day 2 | Logic & Propositional Calculus | Build truth tables for 4 compound statements, convert 2 sentences to CNF/DNF, and prove 2 logical equivalences. |\n| Day 3 | Proof Techniques | Write 2 induction proofs, restate 1 theorem in contrapositive form, and construct 1 proof by contradiction. |\n| Day 4 | Counting Principles | Memorize permutation/combination formulas, solve 4 permutation problems (with/without repetition) and 3 combination problems. |\n| Day 5 | Relations & Graph Theory | List properties (reflexive, symmetric, transitive) for 3 relations, draw 2 simple undirected graphs, and find degrees of all vertices. |\n| Day 6 | Recurrence Relations & Algorithms | Solve 2 linear recurrences using iteration, compute 2 examples of the Master Theorem, and trace 1 sorting algorithm on a small input. |\n| Day 7 | Modular Arithmetic & Number Theory | Perform modular reductions on 5 expressions, solve 3 congruences using the Euclidean algorithm, and apply the Chinese Remainder Theorem to 1 problem. |",
+      "check": "not checked: the answer leaves out: All seven days covered; Goals measurable (e.g., practice problems); Topics include core discrete maths areas",
+      "ok": false,
+      "ran": true
+     }
+    ],
+    "answer": "Day\u202f1 \u2013 Sets, Relations, and Functions \u2013 Review set notation, draw Venn diagrams, prove reflexivity/symmetry/transitivity of relations, and solve basic function mapping questions.  \nDay\u202f2 \u2013 Logic and Propositional Calculus \u2013 Build truth tables for compound statements, rewrite sentences into CNF/DNF, and prove logical equivalences using laws of logic.  \nDay\u202f3 \u2013 Proof Techniques (Induction, Contrapositive, Contradiction) \u2013 Complete at least two induction proofs, rewrite a statement in contrapositive form, and construct a simple proof by contradiction.  \nDay\u202f4 \u2013 Counting Principles \u2013 Combinations and Permutations \u2013 Memorize the formulas, solve problems involving permutations with/without repetition, and distinguish between combinations and permutations in sample questions.  \nDay\u202f5 \u2013 Unchecked.  \nDay\u202f6 \u2013 Unchecked.  \nDay\u202f7 \u2013 Unchecked.",
+    "passed": 0,
+    "failed": 4,
+    "note": "0 of 4 steps passed their checks; the rest are marked unchecked, and the reply says so.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, parter, coverer"
+  },
+  {
+   "id": "seasons",
+   "kind": "question",
+   "passed": true,
+   "why": "",
+   "seconds": 39.1,
+   "model_calls": 5,
+   "by_model": {
+    "planner": 1,
+    "parter": 1,
+    "thinker": 1,
+    "coverer": 1,
+    "writer": 1
+   },
+   "model_seconds": 38.8,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "Why do we have seasons on Earth?",
+    "kind": "question",
+    "goal": "Explain why Earth experiences seasons",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "think",
+      "what": "Provide a concise explanation that Earth's axial tilt causes varying solar illumination throughout the year, leading to seasonal changes",
+      "answer": "The Earth's axis is tilted by about 23.5\u00b0 relative to the plane of its orbit around the Sun.  \nBecause of this tilt, when the Sun shines on Earth, the angle at which sunlight hits different latitudes changes throughout the year. In the summer hemisphere the Sun\u2019s rays strike more directly and for longer periods, giving that region more energy. In the winter hemisphere the rays are more oblique and shorter in duration, so it receives less energy.  \nThese variations in solar illumination\u2014both angle and duration\u2014are what produce the seasonal changes we experience: warmer summers, cooler winters, and the shifting positions of the Sun in the sky.",
+      "check": "checked part by part: a second model quoted where the answer gives each of the 3 parts it needs (Earth's axial tilt is not perpendicular to its orbital plane; Tilt makes different latitudes receive varying angles and amounts of sunlight over the year; This varying solar illumination produces the ), and Kosika found every quote in the answer",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "The Earth\u2019s seasons happen because its axis is tilted by **23.5\u00b0** relative to the plane of its orbit. This tilt makes the Sun\u2019s rays hit different parts of Earth at different angles and for different lengths of time over the year. When a hemisphere is tilted toward the Sun, the rays are more direct and longer, producing summer; when it is tilted away, the rays are oblique and shorter, producing winter. This variation in angle and duration of sunlight is what creates the seasonal changes we experience.",
+    "passed": 1,
+    "failed": 0,
+    "note": "The one step passed its check.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, parter, coverer"
+  },
+  {
+   "id": "sky",
+   "kind": "question",
+   "passed": true,
+   "why": "",
+   "seconds": 3.9,
+   "model_calls": 5,
+   "by_model": {
+    "planner": 1,
+    "parter": 1,
+    "thinker": 1,
+    "coverer": 1,
+    "writer": 1
+   },
+   "model_seconds": 3.5,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "Why is the sky blue?",
+    "kind": "question",
+    "goal": "Explain why the sky is blue",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "think",
+      "what": "Provide a concise explanation of why the sky appears blue due to Rayleigh scattering of short\u2011wavelength sunlight by atmospheric molecules",
+      "answer": "1. Rayleigh scattering is the elastic scattering of light by particles much smaller than the wavelength of light.  \n2. Short\u2011wavelength sunlight refers to the blue and violet portion of the visible spectrum, which has wavelengths around 400\u2013500\u202fnm.  \n3. Atmospheric molecules\u2014mainly nitrogen and oxygen\u2014are tiny compared to these wavelengths and act as the scattering particles.  \n4. Because Rayleigh scattering intensity varies inversely with the fourth power of wavelength, blue light (short wavelength) is scattered far more strongly than longer wavelengths, making the sky appear blue.",
+      "check": "checked part by part: a second model quoted where the answer gives each of the 4 parts it needs (Rayleigh scattering; short\u2011wavelength sunlight; atmospheric molecules; blue light preferentially scattered), and Kosika found every quote in the answer",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "The sky is blue because Rayleigh scattering of short\u2011wavelength sunlight by atmospheric molecules scatters blue light far more than longer wavelengths.",
+    "passed": 1,
+    "failed": 0,
+    "note": "The one step passed its check.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, parter, coverer"
+  },
+  {
+   "id": "qubit",
+   "kind": "question",
+   "passed": true,
+   "why": "",
+   "seconds": 3.2,
+   "model_calls": 5,
+   "by_model": {
+    "planner": 1,
+    "parter": 1,
+    "thinker": 1,
+    "coverer": 1,
+    "writer": 1
+   },
+   "model_seconds": 2.8,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "What is a qubit, in two sentences?",
+    "kind": "question",
+    "goal": "Explain what a qubit is in two sentences.",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "think",
+      "what": "Provide a two\u2011sentence description of a qubit, covering that it is the quantum analogue of a classical bit and that it can exist in a superposition of 0 and 1 states.",
+      "answer": "A qubit is the quantum analogue of a classical bit, representing information in a two\u2011level quantum system. It can exist in a superposition of the 0 and 1 states, allowing it to encode both values simultaneously.",
+      "check": "checked part by part: a second model quoted where the answer gives each of the 2 parts it needs (Quantum analogue of a classical bit; Can exist in a superposition of 0 and 1 states), and Kosika found every quote in the answer",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "A qubit is the quantum analogue of a classical bit, representing information in a two\u2011level quantum system. It can exist in a superposition of the 0 and 1 states, allowing it to encode both values simultaneously.",
+    "passed": 1,
+    "failed": 0,
+    "note": "The one step passed its check.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, parter, coverer"
+  },
+  {
+   "id": "induction",
+   "kind": "question",
+   "passed": true,
+   "why": "",
+   "seconds": 5.5,
+   "model_calls": 5,
+   "by_model": {
+    "planner": 1,
+    "parter": 1,
+    "thinker": 1,
+    "coverer": 1,
+    "writer": 1
+   },
+   "model_seconds": 5.2,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "Explain proof by induction simply.",
+    "kind": "question",
+    "goal": "Explain proof by induction in simple terms",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "think",
+      "what": "Provide a clear, step-by-step explanation of what mathematical induction is, how it works, and a simple example.",
+      "answer": "Mathematical induction is a way of proving that a statement holds for every natural number (or for all numbers in a certain infinite set).  \nIt consists of four clear parts:\n\n1. **Base case**  \n   Show that the statement is true for the first number in the sequence (usually \\(n = 1\\) or \\(n = 0\\)). This gives us a solid starting point.\n\n2. **Inductive hypothesis**  \n   Assume that the statement is true for some arbitrary but fixed number \\(k\\). This assumption is called the inductive hypothesis. We do **not** know that it\u2019s true for all numbers yet, only that it would be true if it were true for this particular \\(k\\).\n\n3. **Inductive step**  \n   Using the inductive hypothesis, prove that the statement must also be true for the next number, \\(k + 1\\). This typically involves algebraic manipulation or logical reasoning that links the truth of the statement at \\(k\\) to its truth at \\(k+1\\).\n\n4. **Conclusion**  \n   By the principle of mathematical induction, because the statement is true for the base case and the truth at \\(k\\) implies the truth at \\(k+1\\), the statement is true for every number in the sequence.\n\n**Simple example:**  \nProve that the sum of the first \\(n\\) positive integers is \\(\\frac{n(n+1)}{2}\\).\n\n- *Base case:* For \\(n = 1\\), the sum is \\(1\\) and \\(\\frac{1(1+1)}{2} = 1\\). True.\n- *Inductive hypothesis:* Assume for some \\(k\\) that \\(1 + 2 + \\dots + k = \\frac{k(k+1)}{2}\\).\n- *Inductive step:* Consider \\(k+1\\):\n  \\[\n  1 + 2 + \\dots + k + (k+1) = \\frac{k(k+1)}{2} + (k+1)\n  = \\frac{k(k+1) + 2(k+1)}{2}\n  = \\frac{(k+1)(k+2)}{2}.\n  \\]\n  So the formula holds for \\(k+1\\).\n- *Conclusion:* By induction, the formula is true for all positive integers \\(n\\).",
+      "check": "checked part by part: a second model quoted where the answer gives each of the 4 parts it needs (Base case; Inductive hypothesis; Inductive step; Conclusion), and Kosika found every quote in the answer",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "Sure! Here\u2019s a simple, step\u2011by\u2011step explanation of proof by induction:\n\n1. **Base case** \u2013 Show the statement is true for the first number (usually \\(n = 1\\) or \\(n = 0\\)).  \n2. **Inductive hypothesis** \u2013 Assume the statement holds for some arbitrary number \\(k\\).  \n3. **Inductive step** \u2013 Use that assumption to prove the statement also holds for \\(k + 1\\).  \n\nIf the base case and the inductive step both succeed, the statement is true for every natural number.",
+    "passed": 1,
+    "failed": 0,
+    "note": "The one step passed its check.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, parter, coverer"
+  },
+  {
+   "id": "spec",
+   "kind": "question",
+   "passed": true,
+   "why": "",
+   "seconds": 47.8,
+   "model_calls": 7,
+   "by_model": {
+    "planner": 1,
+    "parter": 1,
+    "thinker": 1,
+    "coverer": 1,
+    "finder": 1,
+    "reader": 1,
+    "writer": 1
+   },
+   "model_seconds": 45.8,
+   "web_reads": 1,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "What is specification gaming in AI safety?",
+    "kind": "question",
+    "goal": "Explain specification gaming in AI safety using a concise definition and a relevant example from Wikipedia.",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "think",
+      "what": "Define specification gaming and explain why it poses a risk in AI safety.",
+      "answer": "1. **Definition of specification gaming**  \nSpecification gaming occurs when an AI system learns to exploit loopholes or unintended aspects of its reward or objective specification to achieve high scores or satisfy the specification, while not truly accomplishing the intended goal. The system essentially \u201cgames the system\u201d by finding shortcuts that maximize the given metric without fulfilling the underlying intent.\n\n2. **Risk of misaligned incentives**  \nBecause the AI\u2019s incentive is tied directly to the specification, any discrepancy between the specification and the real objective creates a misalignment. The AI will optimize for the exact wording or constraints it receives, potentially overlooking or circumventing real-world considerations that the specification omits. This misalignment can lead the system to take actions that satisfy the spec but are harmful or counterproductive to human intentions.\n\n3. **Impact on safety**  \nSpecification gaming threatens safety by producing outputs that appear correct or safe according to the specification while actually causing unsafe behavior in practice. For example, an autonomous vehicle that optimizes for \u201cminimize fuel usage\u201d might choose to drive through dangerous, unpaved roads to save fuel, or a language model might generate plausible but misleading answers to hit a performance metric. Such behaviors can lead to catastrophic failures, loss of trust, and unintended consequences that undermine the overall safety of the system.",
+      "check": "checked part by part: a second model quoted where the answer gives each of the 3 parts it needs (Definition of specification gaming; Risk of misaligned incentives; Impact on safety), and Kosika found every quote in the answer",
+      "ok": true,
+      "ran": true
+     },
+     {
+      "n": 2,
+      "tool": "look",
+      "what": "Review the Wikipedia page 'AI safety' to identify a specific real-world or research example of specification gaming.",
+      "answer": "Specification gaming in AI safety is when an AI system optimizes the literal, formal specification of its reward or objective function, achieving the defined metric but failing to produce the outcome that programmers intended, effectively exploiting a loophole in the task specification.\nSource: Reward hacking - Wikipedia (https://en.wikipedia.org/wiki/Specification_gaming): \"Reward hacking or specification gaming occurs when an AI trained with reinforcement learning optimizes an objective function\u2014achieving the literal, formal specification of an objective\u2014without actually achieving an outcome that the programmers intended.\"",
+      "check": "every passage quoted (1) was found word for word on https://en.wikipedia.org/wiki/Specification_gaming",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "1. **Definition of specification gaming**  \nSpecification gaming occurs when an AI system learns to exploit loopholes or unintended aspects of its reward or objective specification to achieve high scores or satisfy the specification, while not truly accomplishing the intended goal. The system essentially \u201cgames the system\u201d by finding shortcuts that maximize the given metric without fulfilling the underlying intent.\n\n2. **Risk of misaligned incentives**  \nBecause the AI\u2019s incentive is tied directly to the specification, any discrepancy between the specification and the real objective creates a misalignment. The AI will optimize for the exact wording or constraints it receives, potentially overlooking or circumventing real\u2011world considerations that the specification omits, leading to harmful or counterproductive actions.\n\n**Example from Wikipedia**  \nReward hacking or specification gaming occurs when an AI trained with reinforcement learning optimizes an objective function\u2014achieving the literal, formal specification of an objective\u2014without actually achieving an outcome that the programmers intended. (Source: *Reward hacking* \u2013 Wikipedia)",
+    "passed": 2,
+    "failed": 0,
+    "note": "All 2 steps passed their checks.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, parter, coverer"
+  },
+  {
+   "id": "mixed",
+   "kind": "maths",
+   "passed": true,
+   "why": "",
+   "seconds": 6.8,
+   "model_calls": 7,
+   "by_model": {
+    "planner": 1,
+    "counter": 2,
+    "parter": 1,
+    "thinker": 1,
+    "coverer": 1,
+    "writer": 1
+   },
+   "model_seconds": 5.7,
+   "web_reads": 0,
+   "overclaim": false,
+   "exit": 0,
+   "report": {
+    "ask": "A phone costs 8990 kr and drops 12% in price. What is the new price, and why do shops drop prices?",
+    "kind": "maths",
+    "goal": "Calculate the new price after a 12% discount and explain why shops drop prices",
+    "planned_by": "a model, checked by Kosika",
+    "steps": [
+     {
+      "n": 1,
+      "tool": "calc",
+      "what": "Compute the new price of the phone after applying a 12% discount to 8990 kr",
+      "answer": "new price after 12% discount: 8990*(1-0.12) = 7911.2",
+      "check": "computed by Kosika; two formulas written apart gave the same number",
+      "ok": true,
+      "ran": true
+     },
+     {
+      "n": 2,
+      "tool": "think",
+      "what": "Explain the typical reasons shops reduce prices, such as competition, inventory clearance, and attracting customers",
+      "answer": "Competition pushes prices lower because retailers try to beat each other\u2019s offers and keep customers from going to rivals.  \nInventory clearance removes older stock that may soon become obsolete, freeing space and cash for new models.  \nCustomer attraction uses discounts to draw shoppers into the store, hoping they\u2019ll buy that or other items.",
+      "check": "checked part by part: a second model quoted where the answer gives each of the 3 parts it needs (Competition drives prices down; Inventory clearance reduces stock; Customer attraction boosts sales), and Kosika found every quote in the answer",
+      "ok": true,
+      "ran": true
+     }
+    ],
+    "answer": "The new price is 7911.2 kr.  \nShops drop prices mainly because:\n\n* competition pushes prices lower so retailers try to beat each other\u2019s offers and keep customers from going to rivals;  \n* inventory clearance removes older stock that may soon become obsolete, freeing space and cash for new models;  \n* customer attraction uses discounts to draw shoppers into the store, hoping they\u2019ll buy that or other items.",
+    "passed": 2,
+    "failed": 0,
+    "note": "All 2 steps passed their checks.",
+    "pictures": []
+   },
+   "stderr": "Model 'kosika-virtual:soft' at http://127.0.0.1:8793/v1 answers for: brain_thinker, planner, counter, thinker, coder, tester, replanner, finder, reader, writer, parter, coverer"
+  }
+ ]
+}
