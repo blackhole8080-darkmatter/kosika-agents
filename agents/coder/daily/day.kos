@@ -1,0 +1,156 @@
+// day.kos: how a day of Kosika's coder swarm is run, decided in Kosika.
+//
+// daily.py does the plumbing a program cannot do for itself: copy Kosika,
+// start the coders, wait for them, hold the to-do list's lock. Every choice
+// about the day is made here, with no model:
+//
+//   plan    which requests the swarm takes and which agent takes each; the
+//           to-do list with them marked taken ("- [~] "), and any request a
+//           crashed run left taken opened again first
+//   mark    the to-do list with one request marked: "- [x] " passed,
+//           "- [!] " did not, "- [~] " taken, with its note
+//   ended   how a coder's request ends: passed, did not pass, or stopped
+//           because it ran out of time, and the note that says so
+//   again   whether a coder that did not pass gets one more try
+//
+//   kosika run day.kos --workflow plan --input plan.json
+//
+// So the coders can read, test and improve the rules their days are run by.
+
+export [DayAsk, DayPlan, MarkAsk, MemberEnd, Mark, TryState, day_request, day_reopen_stuck, day_plan, day_mark, day_end, day_try_again]
+
+record DayAsk { todo: Text size: Number names: Text[] }
+// take: the requests, in order; agents: who takes each; reopened: how many
+// taken lines a crashed run had left, opened again.
+record DayPlan { todo: Text take: Text[] agents: Text[] reopened: Number }
+record MarkAsk { todo: Text request: Text mark: Text note: Text }
+record Marked { todo: Text found: Bool }
+// stopped_after: minutes the coder ran before it was stopped, 0 if it ended.
+record MemberEnd { request: Text passed: Bool run: Text date: Text stopped_after: Number }
+record Mark { mark: Text note: Text }
+record TryState { attempt: Number tries: Number passed: Bool state: Text }
+record Again { again: Bool why: Text }
+
+fn day_lines(todo: Text) -> Text[] { return todo.replace("\r\n", "\n").split("\n") }
+
+fn day_text(lines: Text[]) -> Text {
+  let body = lines.join("\n").trim_end()
+  return body + "\n"
+}
+
+// The request a to-do line holds, without its mark or its dated note.
+fn day_request(line: Text) -> Text { return line.drop(6).split(" (20")[0].trim() }
+
+// A line left "- [~] " when a day begins was taken by a run that never
+// ended (it crashed or the computer slept): it is open again.
+fn day_reopen_stuck(todo: Text) -> Text {
+  let lines = for line in day_lines(todo) { if line.starts_with("- [~] ") { "- [ ] " + line.drop(6) } else { line } }
+  return day_text(lines)
+}
+
+fn day_stuck(todo: Text) -> Number { return (for line in day_lines(todo) where line.starts_with("- [~] ") { line }).length() }
+
+fn day_plan(a: DayAsk) -> DayPlan {
+  let fresh = day_reopen_stuck(a.todo)
+  var take: Text[] = []
+  var agents: Text[] = []
+  var out: Text[] = []
+  for line in day_lines(fresh) {
+    if line.starts_with("- [ ] ") and take.length() < a.size {
+      let request = line.drop(6).trim()
+      take = take.append(request)
+      agents = agents.append(if a.names.is_empty() { "coder" } else { a.names[(take.length() - 1) % a.names.length()] })
+      out = out.append("- [~] " + request)
+    } else {
+      out = out.append(line)
+    }
+  }
+  return {todo: day_text(out), take: take, agents: agents, reopened: day_stuck(a.todo)}
+}
+
+// The to-do list with the line holding the request (open or taken) marked.
+fn day_mark(m: MarkAsk) -> Marked {
+  var found = false
+  var out: Text[] = []
+  for line in day_lines(m.todo) {
+    if not found and (line.starts_with("- [ ] ") or line.starts_with("- [~] ")) and day_request(line) == m.request {
+      out = out.append(m.mark + m.request + m.note)
+      found = true
+    } else {
+      out = out.append(line)
+    }
+  }
+  return {todo: day_text(out), found: found}
+}
+
+fn day_end(e: MemberEnd) -> Mark {
+  if e.stopped_after > 0 { return {mark: "- [!] ", note: f" ({e.date}, stopped after {e.stopped_after} minutes)"} }
+  return {mark: if e.passed { "- [x] " } else { "- [!] " }, note: f" ({e.date}, {e.run})"}
+}
+
+// One more try, told what the checks found, only when the coder finished
+// its work and the checks did not pass, and tries are left.
+fn day_try_again(t: TryState) -> Again {
+  if t.passed { return {again: false, why: "it passed"} }
+  if t.state != "done" { return {again: false, why: f"the coder ended as {t.state}, so its checks say nothing new"} }
+  if t.attempt + 1 >= t.tries { return {again: false, why: f"all {t.tries} tries are used"} }
+  return {again: true, why: "the checks did not pass; trying once more with the checker's notes"}
+}
+
+workflow plan(a: DayAsk) -> DayPlan {
+  planned = day_plan(a)
+}
+
+workflow mark(m: MarkAsk) -> Marked {
+  marked = day_mark(m)
+}
+
+workflow ended(e: MemberEnd) -> Mark {
+  how = day_end(e)
+}
+
+workflow again(t: TryState) -> Again {
+  decided = day_try_again(t)
+}
+
+// ---------------------------------------------------------------- tests
+
+test "a day takes the first open requests, gives each an agent, and marks them taken" {
+  todo = "# todo\n- [x] done one (2026-11-14, 2026-11-14-1)\n- [ ] add a\n- [!] failed one (2026-11-14, 2026-11-14-2)\n- [ ] add b\n- [ ] add c\n"
+  p = day_plan({todo: todo, size: 2, names: ["coder-1", "coder-2", "coder-3"]})
+  expect p.take == ["add a", "add b"]
+  expect p.agents == ["coder-1", "coder-2"]
+  expect p.todo == "# todo\n- [x] done one (2026-11-14, 2026-11-14-1)\n- [~] add a\n- [!] failed one (2026-11-14, 2026-11-14-2)\n- [~] add b\n- [ ] add c\n"
+  expect p.reopened == 0
+  expect day_plan({todo: "- [x] all done\n", size: 4, names: []}).take.is_empty()
+}
+
+test "a request a crashed run left taken is open again when the day begins" {
+  p = day_plan({todo: "- [~] stuck one\n- [ ] add a\n", size: 1, names: ["coder-1"]})
+  expect p.reopened == 1
+  expect p.take == ["stuck one"]
+  expect p.todo == "- [~] stuck one\n- [ ] add a\n"
+  expect day_reopen_stuck("- [~] a\n- [x] b\n") == "- [ ] a\n- [x] b\n"
+}
+
+test "a request is marked once, on its open or taken line, with its note" {
+  todo = "- [x] add a (2026-11-10, r1)\n- [~] add a\n- [ ] add b\n"
+  m = day_mark({todo: todo, request: "add a", mark: "- [x] ", note: " (2026-11-25, 2026-11-25-1)"})
+  expect m.found
+  expect m.todo == "- [x] add a (2026-11-10, r1)\n- [x] add a (2026-11-25, 2026-11-25-1)\n- [ ] add b\n"
+  expect not day_mark({todo: todo, request: "add z", mark: "- [x] ", note: ""}).found
+}
+
+test "how a coder's request ends" {
+  expect day_end({request: "a", passed: true, run: "2026-11-25-1", date: "2026-11-25", stopped_after: 0}) == {mark: "- [x] ", note: " (2026-11-25, 2026-11-25-1)"}
+  expect day_end({request: "a", passed: false, run: "2026-11-25-2", date: "2026-11-25", stopped_after: 0}).mark == "- [!] "
+  expect day_end({request: "a", passed: false, run: "", date: "2026-11-25", stopped_after: 45}) == {mark: "- [!] ", note: " (2026-11-25, stopped after 45 minutes)"}
+}
+
+test "one more try only when the coder finished, did not pass, and tries are left" {
+  expect day_try_again({attempt: 0, tries: 2, passed: false, state: "done"}).again
+  expect not day_try_again({attempt: 1, tries: 2, passed: false, state: "done"}).again
+  expect not day_try_again({attempt: 0, tries: 2, passed: true, state: "done"}).again
+  expect not day_try_again({attempt: 0, tries: 2, passed: false, state: "failed"}).again
+  expect not day_try_again({attempt: 0, tries: 1, passed: false, state: "done"}).again
+}
