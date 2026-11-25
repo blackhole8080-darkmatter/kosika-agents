@@ -4,7 +4,7 @@ Every Kosika agent lives here. The [kosika](https://github.com/blackhole8080-dar
 
 | Folder | What is in it |
 | --- | --- |
-| `agents/` | One folder per agent: coder, hands (kits, diary, team board, plan, learn, mascots), lookout, gatherer, desk, assistant, study, researcher, osbuilder, digest and the rest |
+| `agents/` | One folder per agent: coder, hands (kits, diary, team board, plan, learn, mascots), lookout, gatherer, desk, assistant, study, reader (whole books into study notes), researcher, osbuilder, digest and the rest |
 | `swarm/` | The coder swarm and the project team (`develop.kos`, `team.kos`, `mind.kos`) |
 | `models/` | Kosika's virtual models: the free-model pool, the router (`choose.kos`) and training for its own small coder |
 | `benchmarks/` | The coder, osbuild and researcher benchmarks, and the Python comparison |
