@@ -1,0 +1,523 @@
+// Shodh (शोध, "research"): turns the newest research papers into work for
+// Kosika's own agents, and into something new for you to learn.
+//
+//   kosika test main.kos
+//   kosika run main.kos --input run.json --memory memory
+//       --allow-folder DIGEST_FOLDER --allow-folder WORK_FOLDER
+//       --model kosika-virtual:soft --model-url http://127.0.0.1:8791/v1
+//
+// run.json is {"a": {"digests": "DIGEST_FOLDER/digests", "queue":
+// "WORK_FOLDER/queue.md", "notes": "WORK_FOLDER/research", "day":
+// "2026-11-26"}}. The digest agent (agents/digest) reads arXiv every
+// afternoon; Shodh reads the last three of its afternoons after it.
+//
+// For each paper that can help Kosika (code picks them by whole words, at
+// most three a day, never one it studied before) one model is asked for a
+// study of it, and code checks the study before anything is kept:
+//
+// * it must quote the paper's own words, found word for word in what was
+//   read, or the whole study is dropped: nothing is said about a paper that
+//   it does not say;
+// * its 2 to 6 steps of "how" become a white-line diagram;
+// * its request for the coder swarm must be one sentence that begins with
+//   add, write, make, improve or teach, and pass Kosika's kindness check.
+//   A request that does not is left out, and the study is still kept.
+//
+// What it writes, in the folders you grant:
+//
+// * queue.md, the coders' to-do list: each new request as an open item,
+//   with the paper's link. The coders take them like any other request, and
+//   nothing they write is kept until you press Keep on the Coders page.
+// * research/agents/DAY.md: what Kosika's agents can learn, one lesson a
+//   paper, for the planner and the coders to read before they work.
+// * research/learn/DAY.md and a diagram page a paper: for you, in plain
+//   words, with something small to try in Kosika yourself (a hint, never
+//   the answer).
+//
+// It only reads papers and writes those files. It changes no code itself.
+
+import "std/kindness.kos"
+import "std/brain_core.kos"
+
+record Run { digests: Text queue: Text notes: Text day: Text }
+record Said { text: Text studied: Number requests: Number dropped: Number }
+
+record Where { path: Text }
+record Listing { names: Text[] }
+record FileText { text: Text }
+record NewFile { path: Text text: Text }
+record Written { bytes: Number }
+record Keep { path: Text text: Text worth: Number }
+
+record Paper { title: Text link: Text text: Text }
+record Pick { paper: Paper score: Number }
+
+// What the model is asked about one paper, and what it gives back.
+record Ask { task: Text title: Text summary: Text }
+record Study { quote: Text what: Text how: Text[] why: Text lesson: Text request: Text learn: Text try_it: Text }
+
+record Checked { paper: Paper study: Study kept: Bool why: Text request_ok: Bool request_why: Text }
+record Studied { links: Text[] }
+// What a day's reading found, before anything is written: the papers
+// studied and checked, and the coders' to-do list as it was.
+record Day { checked: Checked[] before: Text }
+
+tool list_folder {
+  source system "files"
+  operation: "list"
+  access: observe
+  input: Where
+  output: Listing
+}
+
+tool read_file {
+  source system "files"
+  operation: "read"
+  access: observe
+  input: Where
+  output: FileText
+}
+
+tool write_file {
+  source system "files"
+  operation: "write"
+  access: execute
+  input: NewFile
+  output: Written
+}
+
+agent scholar {
+  can: [list_folder, read_file, write_file]
+}
+
+model student {
+  input: Ask
+  output: Study
+  parameters: {
+    max_output_tokens: 900
+  }
+}
+
+memory studied of Studied
+
+// ---------------------------------------------------------------- reading
+
+// Words that make a paper worth Kosika's time: software, languages,
+// agents and the models that power them.
+fn watch() -> Text[] {
+  return ["programming language", "type system", "compiler", "interpreter", "program synthesis", "code generation", "software engineering", "agent", "agents", "multi-agent", "tool use", "planning", "language model", "small model", "distillation", "fine-tuning", "verification", "testing", "debugging", "repair", "memory", "retrieval", "reasoning", "workflow", "visualization", "diagram", "self-improving", "curriculum", "webassembly", "runtime", "scheduling", "parallel"]
+}
+
+// The papers in one afternoon digest: each begins `### Title` and has its
+// arXiv link on a line of its own.
+fn papers_in(text: Text) -> Paper[] {
+  var found: Paper[] = []
+  var title = ""
+  var link = ""
+  var body: Text[] = []
+  for line in (text + "\n### ").lines() {
+    if line.starts_with("### ") {
+      if not title.is_empty() and not link.is_empty() {
+        found = found.append({title: title, link: link, text: body.join(" ")})
+      }
+      title = line.drop(4).trim()
+      link = ""
+      body = []
+    } else if line.starts_with("https://arxiv.org/") and link.is_empty() {
+      link = line.split(" ")[0]
+    } else if not title.is_empty() and not line.trim().is_empty() {
+      body = body.append(line.trim())
+    }
+  }
+  return found
+}
+
+fn newest(names: Text[], count: Number) -> Text[] {
+  let afternoons = (for name in names where name.ends_with("-afternoon.md") { name }).sort()
+  return afternoons.reverse().take(count)
+}
+
+// Lower case, punctuation off, single spaces, with a space at each end, so
+// words are found only whole.
+fn plain(text: Text) -> Text {
+  var kept = text.lower()
+  for mark in [".", ",", ";", ":", "!", "?", "(", ")", "[", "]", "{", "}", "\"", "'", "/", "\\", "-", "–", "—", "·", "*", "_", "#", "+", "=", "<", ">", "|", "%", "&", "$", "@", "~", "`"] {
+    kept = kept.replace(mark, " ")
+  }
+  return " " + kept.words().join(" ") + " "
+}
+
+// A watch word in the title counts twice; a phrase of two words or more
+// counts twice again.
+fn score_of(paper: Paper) -> Number {
+  let title = plain(paper.title)
+  let body = plain(paper.text)
+  var total = 0
+  for w in watch() {
+    let p = plain(w)
+    let weight = if w.contains(" ") { 2 } else { 1 }
+    if title.contains(p) { total = total + weight * 2 } else if body.contains(p) { total = total + weight }
+  }
+  return total
+}
+
+// The best `most` papers, none studied before, none scoring under `least`.
+fn picks(papers: Paper[], seen: Text[], least: Number, most: Number) -> Paper[] {
+  var all: Pick[] = []
+  var links: Text[] = []
+  for p in papers {
+    if not seen.contains(p.link) and not links.contains(p.link) {
+      let s = score_of(p)
+      if s >= least {
+        all = all.append({paper: p, score: s})
+        links = links.append(p.link)
+      }
+    }
+  }
+  var chosen: Paper[] = []
+  for i in 0 until most {
+    var top: Pick[] = []
+    for c in all {
+      if not (for k in chosen { k.link }).contains(c.paper.link) {
+        if top.is_empty() or c.score > top[0].score { top = [c] }
+      }
+    }
+    chosen = chosen.concat(for t in top { t.paper })
+  }
+  return chosen
+}
+
+// ---------------------------------------------------------------- the study
+
+fn study_task() -> Text {
+  return "You are studying one research paper for Kosika, a programming language and platform for AI agents (records, functions, workflows that call models and tools, tests, memories; two engines, Python and Go). Answer only from the paper's text below. quote: copy 6 to 30 words exactly as they appear in the text. what: in two plain sentences, what the paper found. how: 2 to 6 short steps of how it works, each at most eight words. why: one sentence on why it matters for software. lesson: one sentence a Kosika agent should remember from it when it plans or writes code. request: one sentence asking Kosika's coder agents for one small, concrete change to Kosika that tries the idea, beginning with add, write, make, improve or teach, naming the file or part of Kosika; or empty if there is nothing small to try. learn: three plain sentences that teach the idea to a curious student. try_it: one hint for a small exercise the student can write in Kosika themselves, not the answer. Be honest: if the paper does not really help Kosika, say so in why and leave request empty."
+}
+
+fn ask_of(p: Paper) -> Ask {
+  return {task: study_task(), title: p.title, summary: p.text.take(2500)}
+}
+
+fn no_study() -> Study {
+  return {quote: "", what: "", how: [], why: "", lesson: "", request: "", learn: "", try_it: ""}
+}
+
+fn squeeze(text: Text) -> Text {
+  return text.lower().words().join(" ")
+}
+
+// Code, not the model, decides whether a study is kept.
+fn check(p: Paper, s: Study) -> Checked {
+  let q = squeeze(s.quote)
+  let n = q.words().length()
+  var kept = true
+  var why = ""
+  if s.what.trim().is_empty() {
+    kept = false
+    why = "it said nothing the paper found"
+  } else if n < 6 {
+    kept = false
+    why = "it gave no quote of six words or more"
+  } else if not squeeze(p.title + " " + p.text).contains(q) {
+    kept = false
+    why = "its quote is not in the paper's text"
+  }
+  let kind = kind_check(s.what + " " + s.lesson + " " + s.learn + " " + s.request)
+  if kept and not kind.kind {
+    kept = false
+    why = kind.why
+  }
+  let r = request_check(s.request)
+  return {paper: p, study: s, kept: kept, why: why, request_ok: kept and r.is_empty(), request_why: if kept { r } else { "the study was not kept" }}
+}
+
+// "" when the request is one the coders can take; else why not.
+fn request_check(request: Text) -> Text {
+  let r = request.trim()
+  if r.is_empty() { return "there was nothing small to try" }
+  let first = r.lower().words()[0]
+  if not ["add", "write", "make", "improve", "teach"].contains(first) { return "it does not begin with add, write, make, improve or teach" }
+  if r.length() < 25 { return "it is too short to act on" }
+  if r.length() > 300 { return "it is longer than one plain sentence" }
+  if r.contains("\n") { return "it is more than one line" }
+  for bad in ["delete", "remove all", "force-push", "force push", "disable test", "skip test", "api key", "password"] {
+    if r.lower().contains(bad) { return f"it asks for something the coders must not do ('{bad}')" }
+  }
+  return ""
+}
+
+// ---------------------------------------------------------------- writing
+
+fn queue_line(c: Checked) -> Text {
+  return f"- [ ] {c.study.request.trim()} (idea from research: {c.paper.link})"
+}
+
+// The to-do list with each new request added once, at its end.
+fn queue_with(before: Text, checked: Checked[]) -> Text {
+  var text = before
+  for c in checked {
+    if c.request_ok and not before.contains(c.study.request.trim()) {
+      text = text + (if text.is_empty() or text.ends_with("\n") { "" } else { "\n" }) + queue_line(c) + "\n"
+    }
+  }
+  return text
+}
+
+fn agents_page(day: Text, checked: Checked[]) -> Text {
+  var parts: Text[] = [f"# What Kosika's agents can learn: {day}\n\nRead before planning or writing code. Each lesson comes from a paper, quoted.\n"]
+  for c in checked where c.kept {
+    parts = parts.append(f"## {c.paper.title}\n{c.paper.link}\n\n- Lesson: {c.study.lesson.trim()}\n- Why: {c.study.why.trim()}\n- The paper says: \"{c.study.quote.trim()}\"\n")
+  }
+  return parts.join("\n")
+}
+
+fn picture_name(day: Text, i: Number) -> Text {
+  return f"{day}-{i + 1}.html"
+}
+
+fn learn_page(day: Text, checked: Checked[]) -> Text {
+  var parts: Text[] = [f"# Something new to learn: {day}\n\nFrom the newest research, in plain words, with a small thing to try in Kosika yourself.\n"]
+  var i = 0
+  for c in checked where c.kept {
+    let steps = if c.study.how.length() >= 2 { f"\nHow it works (diagram: {picture_name(day, i)}):\n" + (for s in c.study.how { "- " + s.trim() }).join("\n") + "\n" } else { "" }
+    let task = if c.request_ok { f"\nKosika's coders will try it: {c.study.request.trim()}\n" } else { "" }
+    parts = parts.append(f"## {i + 1}. {c.paper.title}\n{c.paper.link}\n\n{c.study.learn.trim()}\n{steps}\nTry it yourself: {c.study.try_it.trim()}\n{task}")
+    i = i + 1
+  }
+  return parts.join("\n")
+}
+
+fn picture_of(c: Checked) -> Text {
+  return bc_picture(c.paper.title, c.study.how.take(6))
+}
+
+fn kept_only(checked: Checked[]) -> Checked[] {
+  return for c in checked where c.kept { c }
+}
+
+fn said_of(day: Text, checked: Checked[]) -> Said {
+  let kept = kept_only(checked)
+  let asks = (for c in checked where c.request_ok { c }).length()
+  let dropped = checked.length() - kept.length()
+  if checked.is_empty() {
+    return {text: "No new paper in the last digests can help Kosika closely enough today.", studied: 0, requests: 0, dropped: 0}
+  }
+  var lines: Text[] = [f"Studied {kept.length()} of {checked.length()} papers; {asks} new requests for the coders."]
+  for c in checked {
+    lines = lines.append(if c.kept { f"- {c.paper.title}: kept" + (if c.request_ok { "; a request was added" } else { f"; no request ({c.request_why})" }) } else { f"- {c.paper.title}: dropped, {c.why}" })
+  }
+  return {text: lines.join("\n"), studied: kept.length(), requests: asks, dropped: dropped}
+}
+
+// ---------------------------------------------------------------- small helpers
+
+fn nothing() -> FileText { return {text: ""} }
+
+fn day_of(checked: Checked[], before: Text) -> Day { return {checked: checked, before: before} }
+fn no_listing() -> Listing { return {names: []} }
+fn not_written() -> Written { return {bytes: 0} }
+fn no_paper() -> Paper { return {title: "", link: "", text: ""} }
+
+fn path_at(folder: Text, names: Text[], i: Number) -> Where {
+  return {path: if i < names.length() { folder + "/" + names[i] } else { "" }}
+}
+
+fn paper_at(chosen: Paper[], i: Number) -> Paper {
+  return if i < chosen.length() { chosen[i] } else { no_paper() }
+}
+
+fn seen_links(past: StudiedRecalled) -> Text[] {
+  return if past.found { past.value.value().links } else { [] }
+}
+
+fn studied_with(past: StudiedRecalled, checked: Checked[]) -> Studied {
+  return {links: seen_links(past).concat(for c in checked { c.paper.link }).unique()}
+}
+
+fn real(checked: Checked[]) -> Checked[] {
+  return for c in checked where not c.paper.link.is_empty() { c }
+}
+
+fn keep(path: Text, text: Text, worth: Number) -> Keep {
+  return {path: path, text: text, worth: worth}
+}
+
+// How many new requests go to the coders' list: the list is written only then.
+fn asked(checked: Checked[]) -> Number {
+  return (for c in checked where c.request_ok { c }).length()
+}
+
+fn picture_file(a: Run, checked: Checked[], i: Number) -> Keep {
+  let kept = kept_only(checked)
+  return if i < kept.length() and kept[i].study.how.length() >= 2 { keep(a.notes + "/learn/" + picture_name(a.day, i), picture_of(kept[i]), 1) } else { keep("", "", 0) }
+}
+
+// ---------------------------------------------------------------- workflows
+
+// Reading and studying only: nothing here changes a file, so it runs and
+// is tested without anyone's approval.
+workflow prepare(a: Run) -> Day {
+  budget 3 model calls, 1800 seconds
+  past    = recall studied under "all"
+  listed  = execute scholar.list_folder(a.digests) otherwise no_listing()
+  names   = newest(listed.names, 3)
+  d0      = call read_one(path_at(a.digests, names, 0))
+  d1      = call read_one(path_at(a.digests, names, 1))
+  d2      = call read_one(path_at(a.digests, names, 2))
+  chosen  = picks(papers_in(d0.text).concat(papers_in(d1.text)).concat(papers_in(d2.text)), seen_links(past), 3, 3)
+  c0      = call study(paper_at(chosen, 0))
+  c1      = call study(paper_at(chosen, 1))
+  c2      = call study(paper_at(chosen, 2))
+  checked = real([c0, c1, c2])
+  before  = execute scholar.read_file(a.queue) otherwise nothing()
+  day     = day_of(checked, before.text)
+}
+
+// A day's run: read and study, then write what was learnt. Each file
+// written is a change on the computer, so the run asks first.
+workflow main(a: Run) -> Said {
+  budget 3 model calls, 1800 seconds
+  past    = recall studied under "all"
+  found   = call prepare(a)
+  checked = found.checked
+  queued  = call write_one(keep(a.queue, queue_with(found.before, checked), asked(checked)))
+  lessons = call write_one(keep(a.notes + "/agents/" + a.day + ".md", agents_page(a.day, checked), kept_only(checked).length()))
+  learnt  = call write_one(keep(a.notes + "/learn/" + a.day + ".md", learn_page(a.day, checked), kept_only(checked).length()))
+  p0      = call write_one(picture_file(a, checked, 0))
+  p1      = call write_one(picture_file(a, checked, 1))
+  p2      = call write_one(picture_file(a, checked, 2))
+  marked  = remember studied_with(past, checked) in studied under "all"
+  said    = said_of(a.day, checked)
+  require approval
+}
+
+workflow read_one(where: Where) -> FileText {
+  file = match where.path.is_empty() {
+    case true { nothing() }
+    case _ { call read_path(where) }
+  }
+}
+
+workflow read_path(where: Where) -> FileText {
+  file = execute scholar.read_file(where.path) otherwise nothing()
+}
+
+// One paper studied and checked; with no paper, no model is asked.
+workflow study(p: Paper) -> Checked {
+  checked = match p.link.is_empty() {
+    case true { check(p, no_study()) }
+    case _ { call ask(p) }
+  }
+}
+
+workflow ask(p: Paper) -> Checked {
+  q = ask_of(p)
+  s = use_model student(task: q.task, title: q.title, summary: q.summary) retry 1 otherwise no_study()
+  checked = check(p, s)
+}
+
+// A file is written only when there is something in it to keep.
+workflow write_one(f: Keep) -> Written {
+  wrote = match f.path.is_empty() or f.text.is_empty() or f.worth == 0 {
+    case true { not_written() }
+    case _ { call write_path(f) }
+  }
+  require approval
+}
+
+workflow write_path(f: Keep) -> Written {
+  wrote = execute scholar.write_file(path: f.path, text: f.text)
+  require approval
+}
+
+// ---------------------------------------------------------------- tests
+
+fn digest_text() -> Text {
+  return "# Research digest\n\n### Self-repairing code agents with compiler feedback\nSoftware engineering · 2026-11-25 · A. B\nhttps://arxiv.org/abs/1 (preprint; explained from its abstract)\n\nThe idea: A code generation agent reads the compiler's errors and repairs its own program in up to three rounds, which doubles the share of tasks it solves.\n\n### Galaxies far away\nGalaxies · 2026-11-25 · C. D\nhttps://arxiv.org/abs/2 (preprint)\n\nStars and dust.\n\n### Small language model distillation for tool use\nArtificial intelligence · 2026-11-25 · E\nhttps://arxiv.org/abs/3 (preprint)\n\nA small model learns tool use from a large one and keeps most of its accuracy.\n"
+}
+
+fn good_study() -> Study {
+  return {quote: "reads the compiler's errors and repairs its own program", what: "An agent that reads compiler errors and fixes its program solves twice as many tasks.", how: ["Write the program", "Compile and read errors", "Repair from the errors", "Stop after three rounds"], why: "Checks from real tools beat a model's own confidence.", lesson: "After writing code, run kosika check and repair from its errors, at most three times.", request: "Add a repair round to agents/coder/main.kos that feeds kosika check's errors back to the model, at most three rounds.", learn: "A program can be improved by listening to its compiler. Each error names what is wrong and where. Feeding the errors back lets even a small model fix its own mistakes.", try_it: "Write a Kosika test that fails on purpose, read the error, and fix it from the error alone."}
+}
+
+fn run_input() -> Run {
+  return {digests: "d", queue: "w/queue.md", notes: "w/research", day: "2026-11-26"}
+}
+
+test "papers that can help Kosika are picked by whole words" {
+  papers = papers_in(digest_text())
+  expect papers.length() == 3
+  chosen = picks(papers, [], 3, 3)
+  expect chosen.length() == 2
+  links = for c in chosen { c.link }
+  expect links.contains("https://arxiv.org/abs/1")
+  expect links.contains("https://arxiv.org/abs/3")
+  expect picks(papers, ["https://arxiv.org/abs/1"], 3, 3).length() == 1
+  expect score_of(papers[1]) == 0
+}
+
+test "a study is kept only when its quote is the paper's own words" {
+  p = papers_in(digest_text())[0]
+  ok = check(p, good_study())
+  expect ok.kept
+  expect ok.request_ok
+  made_up = check(p, {quote: "the agent never needs a compiler at all", what: "x", how: [], why: "", lesson: "", request: "", learn: "", try_it: ""})
+  expect not made_up.kept
+  expect made_up.why == "its quote is not in the paper's text"
+  short = check(p, {quote: "compiler errors", what: "x", how: [], why: "", lesson: "", request: "", learn: "", try_it: ""})
+  expect short.why == "it gave no quote of six words or more"
+  expect not check(p, no_study()).kept
+}
+
+test "only a plain, safe request goes to the coders" {
+  expect request_check("Add a repair round to agents/coder/main.kos from kosika check's errors.") == ""
+  expect request_check("") == "there was nothing small to try"
+  expect request_check("Please consider repairs in the coder agent someday.") == "it does not begin with add, write, make, improve or teach"
+  expect request_check("Make the coder delete old tests that fail.").contains("must not do")
+  expect request_check("Add it.") == "it is too short to act on"
+}
+
+test "requests are added to the coders' list once, with the paper's link" {
+  p = papers_in(digest_text())[0]
+  c = check(p, good_study())
+  once = queue_with("- [x] an old one\n", [c])
+  expect once.contains("- [ ] Add a repair round to agents/coder/main.kos")
+  expect once.contains("(idea from research: https://arxiv.org/abs/1)")
+  expect queue_with(once, [c]) == once
+}
+
+test "a day's reading studies and checks, and writes nothing" {
+  answers list_folder: [{names: ["2026-11-25-afternoon.md", "2026-11-25-evening.md"]}]
+  answers read_file: [{text: digest_text()}, {text: "- [ ] add a Text method shout()\n"}]
+  // The distillation paper scores highest and is studied first; its answer
+  // quotes words that are not in it, so it is dropped.
+  answers student: [{quote: "a sentence that is not in the paper anywhere", what: "made up", how: [], why: "", lesson: "", request: "Add something.", learn: "", try_it: ""}, good_study()]
+  found = prepare(run_input())
+  said = said_of("2026-11-26", found.checked)
+  expect found.before.contains("add a Text method shout()")
+  expect said.studied == 1
+  expect said.requests == 1
+  expect said.dropped == 1
+  expect said.text.contains("Self-repairing code agents with compiler feedback: kept; a request was added")
+  expect said.text.contains("dropped, its quote is not in the paper's text")
+}
+
+test "the pages say what was learnt, for the agents and for you" {
+  p = papers_in(digest_text())[0]
+  c = check(p, good_study())
+  agents = agents_page("2026-11-26", [c])
+  expect agents.contains("- Lesson: After writing code, run kosika check")
+  expect agents.contains("The paper says: \"reads the compiler's errors")
+  learn = learn_page("2026-11-26", [c])
+  expect learn.contains("Try it yourself: Write a Kosika test that fails on purpose")
+  expect learn.contains("diagram: 2026-11-26-1.html")
+  expect learn.contains("Kosika's coders will try it: Add a repair round")
+  expect picture_of(c).contains("<svg")
+}
+
+test "with no digest there is nothing to study and nothing is written" {
+  answers list_folder: [{names: []}]
+  answers read_file: [{text: ""}]
+  said = main(run_input())
+  expect said.studied == 0
+  expect said.text.starts_with("No new paper")
+}
