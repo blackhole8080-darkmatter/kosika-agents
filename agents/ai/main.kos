@@ -1075,8 +1075,31 @@ fn shape_problem(ask: Text, text: Text) -> Text {
 // ------------------------------------------- the answer, and its check
 
 fn think_brief(w: Work, parts: Text[]) -> Brief {
-  return {task: "Do this one step of the ask well and briefly, in plain words; use the results of earlier steps where they help, and do not redo them. A whole answer covers each of these parts, plainly:\n" + numbered(parts) + "If you are not sure of a fact, say so rather than guess." + shape_rules(w.ask) + " Answer with the text alone.",
+  return {task: "Do this one step of the ask well and briefly, in plain words; use the results of earlier steps where they help, and do not redo them. A whole answer covers each of these parts, plainly:\n" + numbered(parts) + "If you are not sure of a fact, say so rather than guess." + shape_rules(w.ask) + self_facts(w.ask) + " Answer with the text alone.",
           ask: w.ask, step: w.step.what, before: w.before}
+}
+
+// ---------------------------------------------------------------- what Kosika knows of itself
+
+// An ask about Kosika itself: what it is, can do, or should do next.
+fn about_kosika(ask: Text) -> Bool {
+  let t = " " + ask.lower().replace(",", " ").replace("?", " ").replace(".", " ").replace("!", " ") + " "
+  return t.contains("kosika") or t.contains(" kosi ") or t.contains("this platform") or t.contains(" yourself") or t.contains(" your own ")
+}
+
+// What Kosika is and can do, as its own code and growth plan say. A model
+// asked about Kosika is given these and told to claim nothing else about
+// it: asked once without them, Kosika AI said it writes code "in Python,
+// JavaScript", that its tools need a redeploy, and other things that are
+// not so, and every part still passed its check, because the check only
+// sees whether each part was answered.
+fn kosika_facts() -> Text {
+  return "Kosika is a typed programming language for AI workflows, made by Aryan, with two engines (a Python reference engine and a Go engine) that must give the same answers. Kosika AI works in steps, each with one hand: calc (a model writes only the formula; Kosika computes the number with std/math), code (a small program in Kosika, never another language, with its own tests, checked and run by the engine), look (one Wikipedia page, quoted word for word), draw (Kosika Designs draws a formula or shape; every point is computed), and think (an answer in words, checked part by part by a second model's quotes found in it); an explanation also gets a white-line diagram held to its answer. Already in Kosika: memory that recalls by meaning with an embedding model; the Brain (working memory of the talk and a timeline of every episode, with how it went); lessons kept from checked runs; a model router that tries free cloud models first, then local ones, and falls back when one fails; an approval before any action that changes something; a trace of every step; Kosika Studio, a desktop app (Home, Kosi, Coders, Kosika AI, Study, Designs); Kosi, the assistant (reminders, sums, voice); a coder swarm that adds functions to Kosika's standard library, each kept only with Aryan's Keep; hands agents that act on the screen with their own pointer after a yes; a daily research digest and a lab that turns papers into tasks. Still missing or weak, from Kosika's growth plan: `ask ... until done`; a permission policy inside the language; a `train` statement; running model files in the Go engine without Ollama; faster maths in Go; the free models write weak Go code; the Brain keeps only the last six turns of a talk; nothing streams live data in."
+}
+
+fn self_facts(ask: Text) -> Text {
+  if not about_kosika(ask) { return "" }
+  return "\n\nThis ask is about Kosika itself. Here is what Kosika is and can do; say nothing about Kosika that these facts do not say, and where they are silent, say you are not sure:\n" + kosika_facts()
 }
 
 // What a small model or a router sends back that is not an answer: an
@@ -1958,4 +1981,18 @@ test "a formula the planner rewrote so Designs cannot read it is drawn from the 
   expect draw_words(bad) == "Plot y = x^2"
   good: Work = {ask: "Plot y = x^2", goal: "a parabola", n: 1, step: {tool: "draw", what: "plot y = x^2 - 1", done_when: "it is drawn"}, before: ""}
   expect draw_words(good) == "plot y = x^2 - 1"
+}
+
+// ---------------------------------------------------------------- asked about itself (2026-11-26)
+
+test "asked about Kosika, the model is given what Kosika really is" {
+  expect about_kosika("what is the kosika platform good at")
+  expect about_kosika("Kosi, what can you do?")
+  expect not about_kosika("Why is the sky blue?")
+  w: Work = {ask: "What is Kosika good at, and what needs work?", goal: "g", n: 1, step: {tool: "think", what: "say what Kosika is good at", done_when: "named"}, before: ""}
+  b = think_brief(w, ["strengths"])
+  expect b.task.contains("say nothing about Kosika that these facts do not say")
+  expect b.task.contains("never another language")
+  other: Work = {..w, ask: "Why are there tides?"}
+  expect not think_brief(other, ["why"]).task.contains("Kosika is a typed programming language")
 }
