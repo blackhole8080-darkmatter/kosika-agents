@@ -250,8 +250,26 @@ fn makes_something(words: Text[]) -> Bool {
 }
 
 fn handed_said(known: BooksRecalled, got: Handed) -> Turn {
-  let text = if got.ok { "The " + got.agent + " agent says: " + got.text } else { got.text }
+  let text = if got.ok { "The " + got.agent + " agent says: " + plainly(got.text) } else { got.text }
   return {book: book_in(known), text: text, suggest: []}
+}
+
+// What another agent answered, said in words. An agent whose answer is a
+// record (JSON) is never read out as braces and quotes: its summary, answer
+// or text is said, or Kosi says plainly where to see the rest.
+fn plainly(text: Text) -> Text {
+  let t = text.trim()
+  if not (t.starts_with("{") or t.starts_with("[")) { return t }
+  for key in ["summary", "answer", "text", "said", "reply", "message", "result"] {
+    let mark = "\"" + key + "\": \""
+    let at = t.index_of(mark).or(default: -1)
+    if at >= 0 {
+      let rest = t.drop(at + mark.length())
+      let value = rest.split("\"")[0].trim()
+      if value.length() > 0 { return value }
+    }
+  }
+  return "it answered with data rather than words, so open it in Studio to see it."
 }
 
 // A request to do something on the computer, which this assistant cannot.
@@ -1648,4 +1666,11 @@ test "a plain question can be learned; one that points back cannot" {
   expect standalone({text: "what is my locker number"}) == ""
   expect standalone({text: "hi"}) == ""
   expect standalone({text: "what is the weather like"}) == ""
+}
+
+test "another agent's record is said in words, never read out as JSON" {
+  expect plainly("Three notes mention trees.") == "Three notes mention trees."
+  expect plainly("{\"summary\": \"You have 4 tasks this week.\", \"first\": null, \"total\": 4}") == "You have 4 tasks this week."
+  expect plainly("{\"total\": 0, \"loads\": []}").starts_with("it answered with data rather than words")
+  expect plainly("[1, 2, 3]").starts_with("it answered with data")
 }
