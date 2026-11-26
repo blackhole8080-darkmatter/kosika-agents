@@ -1,0 +1,382 @@
+// Lab: the newest research, turned into work for the Kosika agents and
+// lessons for Aryan.
+//
+//   kosika test main.kos
+//   python run_lab.py            (reads, writes notes, adds tasks; see there)
+//   kosika run main.kos --input ask.json --memory memory
+//       --allow-site export.arxiv.org --model kosika-virtual
+//       --model-url http://127.0.0.1:8791/v1
+//   ask.json: {"a": {"most": 2}}
+//
+// It reads arXiv's newest papers in programming languages, software
+// engineering, multi-agent systems and AI. Code, not a model, picks the
+// papers nearest to Kosika by Kosika's own watch words, and never the same
+// paper twice. For each, a model writes three things:
+//
+//   for the agents  what Kosika can learn from the paper, and one small
+//                   task in the shape the coder swarm passes: a function
+//                   written in Kosika for kosika/std, with examples
+//   for Aryan       the idea in plain words, why it is interesting, and
+//                   one thing to try himself
+//
+// Code checks it before it is kept: the note must use the paper's own
+// words (at least four of its topic words), and a task must have the
+// swarm's shape, or the task is left out and the note kept without it.
+// No task is ever run here: run_lab.py adds at most two a day to the
+// coders' to-do list, where each still has to pass its tests in both
+// engines and Aryan's Keep.
+
+export [Paper, LabNote, Lab, papers_in, kosika_score, picked, grounded, task_ok, task_line, lab_text, main]
+
+record PageRequest { url: Text }
+record Page { url: Text title: Text text: Text }
+record Paper { title: Text link: Text published: Text authors: Text summary: Text field: Text }
+record LabAsk { most: Number }
+record Seen { links: Text[] }
+
+// What the model writes for one paper.
+record LabNote { learn: Text idea: Text task: Text lesson: Text try_yourself: Text }
+// One paper, studied and checked.
+record Studied { paper: Paper note: LabNote grounded: Bool task: Text }
+record Lab { date: Text papers: Number notes: Text tasks: Text[] said: Text }
+record Job { text: Text }
+
+memory seen of Seen
+
+tool read_feed {
+  source system "web"
+  operation: "fetch"
+  access: observe
+  input: PageRequest
+  output: Page
+}
+
+agent library {
+  can: [read_feed]
+}
+
+model researcher {
+  input: Job
+  output: LabNote
+  parameters: { max_output_tokens: 1400 }
+}
+
+record TaskText { text: Text }
+
+// A second, narrower ask, when the first note's task is not in the swarm's
+// shape: only the task, told exactly what was wrong with it.
+model tasker {
+  input: Job
+  output: TaskText as text
+  parameters: { max_output_tokens: 500 }
+}
+
+// ---------------------------------------------------------------- reading
+
+fn feeds() -> Text[] {
+  return [
+    "https://export.arxiv.org/api/query?search_query=cat:cs.PL+OR+cat:cs.SE&sortBy=submittedDate&sortOrder=descending&max_results=15",
+    "https://export.arxiv.org/api/query?search_query=cat:cs.MA+OR+cat:cs.AI&sortBy=submittedDate&sortOrder=descending&max_results=15"
+  ]
+}
+
+// The papers in a feed's text, as Kosika's web tool reads an arXiv feed:
+// an entry begins with ---, then a line for each of its parts.
+fn papers_in(text: Text, field: Text) -> Paper[] {
+  var found: Paper[] = []
+  var title = ""
+  var link = ""
+  var published = ""
+  var authors: Text[] = []
+  var summary = ""
+  var open = false
+  for line in (text + "\n---").lines() {
+    if line.trim() == "---" {
+      if open and not title.is_empty() and not link.is_empty() {
+        found = found.append({title: title, link: link, published: published.take(10), authors: authors.take(4).join(", "), summary: summary.take(1800), field: field})
+      }
+      title = ""
+      link = ""
+      published = ""
+      authors = []
+      summary = ""
+      open = true
+    } else if line.starts_with("Title: ") { title = line.drop(7).trim() }
+    else if line.starts_with("Link: ") { link = line.drop(6).trim() }
+    else if line.starts_with("Published: ") { published = line.drop(11).trim() }
+    else if line.starts_with("Author: ") { authors = authors.append(line.drop(8).trim()) }
+    else if line.starts_with("Summary: ") { summary = line.drop(9).trim() }
+  }
+  return found
+}
+
+fn no_page() -> Page { return {url: "", title: "", text: ""} }
+
+// ---------------------------------------------------------------- choosing
+
+// Kosika's watch words, as projects.md gives them for Kosika.
+fn watch() -> Text[] {
+  return ["programming language", "type system", "type check", "verification", "formal", "compiler", "interpreter", "program synthesis", "code generation", "agent", "tool use", "language model", "llm", "structured output", "json", "schema", "constrained decoding", "sandbox", "permission", "privacy", "security", "prompt injection", "benchmark", "evaluation", "reasoning", "planning", "self-improv", "feedback", "retrieval", "embedding", "workflow", "test", "repair", "memory"]
+}
+
+// How near a paper is to Kosika: how many watch words its title and summary use.
+fn kosika_score(p: Paper) -> Number {
+  let t = (p.title + " " + p.summary).lower()
+  return (for w in watch() where t.contains(w) { 1 }).length()
+}
+
+// The `most` nearest papers not seen before, with at least three watch words.
+fn picked(papers: Paper[], seen: Text[], most: Number) -> Paper[] {
+  var fresh: Paper[] = []
+  for p in papers {
+    if not seen.contains(p.link) and kosika_score(p) >= 3 and (for q in fresh where q.link == p.link { 1 }).is_empty() { fresh = fresh.append(p) }
+  }
+  var out: Paper[] = []
+  var left = fresh
+  while out.length() < most and not left.is_empty() {
+    var best = left[0]
+    for p in left { if kosika_score(p) > kosika_score(best) { best = p } }
+    out = out.append(best)
+    left = for p in left where p.link != best.link { p }
+  }
+  return out
+}
+
+// ---------------------------------------------------------------- studying
+
+fn kosika_context() -> Text {
+  return "Kosika is a typed programming language for AI workflows, with two engines (Python and Go) that must give the same answers. Its standard library is written in Kosika itself, in kosika/std: stats.kos (numbers and lists of numbers), text.kos (text), designs_palette.kos (colours). Its agents never trust a model's answer: code checks it (sums computed, tests run, quotes found word for word). New abilities are added as small exported functions in kosika/std/*.kos, written in Kosika, by a swarm of coders that must pass their tests in both engines."
+}
+
+fn study_task() -> Text {
+  return "You read one research paper for Kosika's agents and for Aryan, who builds Kosika and wants to learn. " + kosika_context() + "\n\nWrite five things, in plain words, using the paper's own words where you can:\nlearn: what Kosika's agents can learn from this paper, in 2 or 3 sentences.\nidea: one way Kosika could use it, in 1 or 2 sentences.\ntask: ONE small step towards the idea, written exactly in this form: add an exported function NAME(ARG: TYPE, ...) -> TYPE to kosika/std/stats.kos (or text.kos), written in Kosika, that DOES WHAT; examples: `NAME(...)` is `VALUE`, `NAME(...)` is `VALUE`. Types are Text, Number, Bool, Text[] and Number[]. Work each example out by hand.\nlesson: for Aryan, what the paper found and why it is interesting, in 3 to 5 short sentences, with no jargon left unexplained.\ntry_yourself: one small thing Aryan can try himself to understand it.\nAnswer as JSON: {\"learn\": \"...\", \"idea\": \"...\", \"task\": \"...\", \"lesson\": \"...\", \"try_yourself\": \"...\"}"
+}
+
+fn study_job(p: Paper) -> Text {
+  return study_task() + "\n\nThe paper: " + p.title + " (" + p.link + ")\n" + p.summary
+}
+
+// The words that carry a text's topic: four letters or more, lower case.
+fn topic_words(t: Text) -> Text[] {
+  let common = ["this", "that", "with", "from", "into", "their", "they", "which", "when", "what", "where", "than", "then", "these", "those", "have", "been", "were", "also", "such", "more", "most", "each", "over", "only", "very", "much", "many", "some", "kosika", "paper", "agents", "agent's", "could", "would", "should"]
+  var out: Text[] = []
+  for w in t.lower().replace(",", " ").replace(".", " ").replace("(", " ").replace(")", " ").replace(":", " ").replace(";", " ").replace("\"", " ").words() {
+    if w.length() >= 4 and not common.contains(w) and not out.contains(w) { out = out.append(w) }
+  }
+  return out
+}
+
+// A note says what the paper says: its "learn" and "lesson" share at least
+// four topic words with the paper, so a note about some other paper, or
+// about nothing, is not kept.
+fn grounded(n: LabNote, p: Paper) -> Bool {
+  let paper = topic_words(p.title + " " + p.summary)
+  let said = topic_words(n.learn + " " + n.lesson)
+  return (for w in said where paper.contains(w) { w }).length() >= 4
+}
+
+// "" when the note can be kept; else why not, shown to the model once.
+fn note_ok(n: LabNote, p: Paper) -> Text {
+  if n.learn.trim().length() < 40 { return "say in 2 or 3 sentences what Kosika's agents can learn" }
+  if n.lesson.trim().length() < 60 { return "write the lesson for Aryan in 3 to 5 sentences" }
+  if not grounded(n, p) { return "use the paper's own words: say what this paper found" }
+  return ""
+}
+
+// Why a task is not in the swarm's shape, or "" when it is.
+fn task_problem(task: Text) -> Text {
+  let t = task.trim().trim_marks("`")
+  if not t.starts_with("add an exported function ") { return "begin with: add an exported function NAME(ARG: TYPE) -> TYPE to kosika/std/stats.kos" }
+  if not (t.contains("kosika/std/") and t.contains(".kos")) { return "say the file: to kosika/std/stats.kos or to kosika/std/text.kos" }
+  if t.contains("List[") or t.contains("float") or t.contains("int)") { return "use Kosika's types only: Text, Number, Bool, Text[], Number[]" }
+  if t.length() > 600 { return "keep it to one small function, in one sentence and its examples" }
+  if not t.contains("examples:") { return "end with: examples: `NAME(...)` is `VALUE`, `NAME(...)` is `VALUE`" }
+  if not task_ok(t) { return "give at least two examples, each written exactly as `NAME(...)` is `VALUE` with backticks" }
+  let said = t.split("examples:")[0].lower()
+  for w in ["engine", "runs the", "run the", "executes", "calls the", "model", "file", "web", "network", "random", "today", "current time", "the clock"] {
+    if said.contains(w) { return f"it must be a pure calculation on its arguments, with nothing about '{w}': a function in kosika/std cannot run code, models, files or the web" }
+  }
+  if echoes(t) { return "the examples only give back one of the inputs: give a function that computes something new from them" }
+  return ""
+}
+
+// Whether every example's value is just one of its call's arguments, so the
+// function would compute nothing.
+fn echoes(task: Text) -> Bool {
+  let spans = task.split("examples:").drop(1).join("examples:").split("`")
+  var pairs = 0
+  var echoed = 0
+  for i in 0 until spans.length() {
+    if i % 4 == 1 and i + 2 < spans.length() {
+      let call = spans[i].replace(" ", "")
+      let value = spans[i + 2].trim().replace(" ", "")
+      let inside = if call.contains("(") { call.drop(call.index_of("(").or(default: 0) + 1) } else { call }
+      pairs += 1
+      if value.length() > 0 and inside.contains(value) { echoed += 1 }
+    }
+  }
+  return pairs > 0 and echoed == pairs
+}
+
+// The swarm's shape: an exported function written in Kosika for a file of
+// kosika/std, with at least two examples written as `call` is `value`.
+fn task_ok(task: Text) -> Bool {
+  let t = task.trim()
+  if not (t.starts_with("add an exported function ") and t.contains("kosika/std/") and t.contains(".kos")) { return false }
+  if t.contains("List[") or t.contains("float") or t.contains("int)") or t.length() > 600 { return false }
+  if not t.contains("examples:") { return false }
+  let examples = t.split("examples:").drop(1).join("examples:")
+  return (for part in examples.split("` is `") { 1 }).length() >= 3
+}
+
+// The to-do line for a task, saying which paper it came from.
+fn task_line(task: Text, p: Paper) -> Text {
+  let t = task.trim().trim_marks(".;")
+  let written = if t.contains("written in Kosika") { t } else { t.replace(".kos that ", ".kos, written in Kosika, that ") }
+  return "- [ ] " + written + " (from the lab: " + p.link + ")"
+}
+
+fn no_note() -> LabNote { return {learn: "", idea: "", task: "", lesson: "", try_yourself: ""} }
+
+fn studied(p: Paper, n: LabNote) -> Studied {
+  let ok = note_ok(n, p) == ""
+  return {paper: p, note: n, grounded: ok, task: if ok and task_problem(n.task) == "" { task_line(n.task.trim().trim_marks("`"), p) } else { "" }}
+}
+
+fn task_job(p: Paper, n: LabNote) -> Text {
+  return "Write ONE task for Kosika's coder swarm, for this idea: " + n.idea.trim() + "\n(from the paper: " + p.title + ")\n" + kosika_context() + "\nYour task was: " + n.task.trim() + "\nIt cannot be used: " + task_problem(n.task) + ".\nWrite it again, exactly in this form and nothing else: add an exported function NAME(ARG: TYPE, ...) -> TYPE to kosika/std/stats.kos (or text.kos), written in Kosika, that DOES WHAT; examples: `NAME(...)` is `VALUE`, `NAME(...)` is `VALUE`. Work each example out by hand."
+}
+
+fn task_again(n: LabNote, t: TaskText) -> LabNote { return {..n, task: t.text} }
+
+fn no_task() -> TaskText { return {text: ""} }
+
+record TaskFix { paper: Paper note: LabNote }
+
+workflow fix_task(f: TaskFix) -> TaskText {
+  fixed = use_model tasker(task_job(f.paper, f.note)) verify task_problem(fixed.text) retry 1 otherwise no_task()
+  out   = fixed
+}
+
+workflow study(p: Paper) -> Studied {
+  note  = use_model researcher(study_job(p)) verify note_ok(note, p) retry 1 otherwise no_note()
+  fixed = match note_ok(note, p) == "" and task_problem(note.task) != "" {
+    case true { call fix_task({paper: p, note: note}) }
+    case _ { {text: note.task} }
+  }
+  out   = studied(p, task_again(note, fixed))
+}
+
+// ---------------------------------------------------------------- the notes
+
+fn lab_text(date: Text, done: Studied[]) -> Text {
+  let kept = for s in done where s.grounded { s }
+  if kept.is_empty() { return "# Lab notes, " + date + "\n\nNo new paper near Kosika could be read and checked today." }
+  var parts: Text[] = ["# Lab notes, " + date, "Papers read for Kosika's agents and for you. Every note was checked against the paper's own words; a task is added to the coders' list only in the shape the swarm can pass."]
+  for s in kept {
+    let task = if s.task.is_empty() { "_No task in a shape the swarm can pass this time._" } else { s.task.drop(6) }
+    parts = parts.append("## " + s.paper.title + "\n" + s.paper.link + " · " + s.paper.published + " · " + s.paper.authors + "\n\n**For the agents.** " + s.note.learn.trim() + "\n\n**Idea for Kosika.** " + s.note.idea.trim() + "\n\n**Task for the coders.** " + task + "\n\n**For you.** " + s.note.lesson.trim() + "\n\n**Try it yourself.** " + s.note.try_yourself.trim())
+  }
+  return parts.join("\n\n")
+}
+
+fn lab_of(date: Text, done: Studied[]) -> Lab {
+  let kept = for s in done where s.grounded { s }
+  let tasks = for s in kept where not s.task.is_empty() { s.task }
+  return {date: date, papers: kept.length(), notes: lab_text(date, done), tasks: tasks, said: f"Read {kept.length()} paper(s) near Kosika; {tasks.length()} task(s) for the coders."}
+}
+
+fn seen_links(past: SeenRecalled) -> Text[] {
+  let none: Text[] = []
+  return if past.value.exists() { past.value.value().links } else { none }
+}
+
+fn with_seen(past: SeenRecalled, read: Paper[]) -> Seen {
+  let all = seen_links(past).concat(for p in read { p.link })
+  return {links: all.drop((all.length() - 500).max(0))}
+}
+
+workflow main(a: LabAsk) -> Lab {
+  budget 6 model calls, 1800 seconds
+  today  = now
+  past   = recall seen under "all"
+  one    = execute library.read_feed(feeds()[0]) otherwise no_page()
+  two    = execute library.read_feed(feeds()[1]) otherwise no_page()
+  chosen = picked(papers_in(one.text, "cs.PL / cs.SE").concat(papers_in(two.text, "cs.MA / cs.AI")), seen_links(past), a.most.max(1).min(3))
+  done   = for p in chosen limit 3 { call study(p) }
+  // Only a paper whose notes passed counts as read: one a model could not
+  // study (none answered, or its note was not grounded) is tried again later.
+  kept   = remember with_seen(past, for s in done where s.grounded { s.paper }) in seen under "all"
+  out    = lab_of(today.date, done)
+}
+
+// ---------------------------------------------------------------- tests
+
+fn lab_feed() -> Text {
+  return "---\nTitle: Checking Agent Tool Calls with Types\nLink: https://arxiv.org/abs/2611.00001v1\nPublished: 2026-11-24T10:00:00Z\nAuthor: A. One\nSummary: We study LLM agents whose tool calls are checked against a type system before they run. A schema for each tool and a verification step catch most wrong calls; we evaluate on a benchmark of planning tasks with feedback.\n---\nTitle: Galaxies in the Early Universe\nLink: https://arxiv.org/abs/2611.00002v1\nPublished: 2026-11-24T10:00:00Z\nAuthor: B. Two\nSummary: We measure the brightness of distant galaxies.\n"
+}
+
+fn lab_paper() -> Paper { return papers_in(lab_feed(), "cs.AI")[0] }
+
+test "the newest papers are read, and the ones nearest Kosika picked, never twice" {
+  ps = papers_in(lab_feed(), "cs.AI")
+  expect ps.length() == 2 and ps[0].title == "Checking Agent Tool Calls with Types"
+  expect kosika_score(ps[0]) >= 3 and kosika_score(ps[1]) == 0
+  expect picked(ps, [], 2) == [ps[0]]
+  expect picked(ps, [ps[0].link], 2).is_empty()
+  expect picked(ps.concat(ps), [], 2).length() == 1
+}
+
+test "a note is kept only when it says what the paper says" {
+  good: LabNote = {learn: "Agents can check each tool call against a type system and a schema before it runs, which catches most wrong calls.", idea: "Check every tool call's arguments against its record type.", task: "", lesson: "The paper shows that LLM agents make fewer mistakes when every tool call is checked against a schema first. A verification step catches the wrong calls before anything runs.", try_yourself: "Write a record type and see Kosika refuse a wrong call."}
+  expect note_ok(good, lab_paper()) == ""
+  off: LabNote = {..good, learn: "Cats like to sleep in the sun for many hours each day, every day.", lesson: "Sleeping in the sun keeps cats warm and happy, and they purr a lot when they do it, often loudly."}
+  expect note_ok(off, lab_paper()).contains("paper's own words")
+  expect note_ok(no_note(), lab_paper()) != ""
+}
+
+test "a task reaches the coders only in the shape the swarm passes" {
+  t = "add an exported function share_of(part: Number, whole: Number) -> Number to kosika/std/stats.kos, written in Kosika, that gives part over whole, and 0 when whole is 0; examples: `share_of(1, 4)` is `0.25`, `share_of(3, 0)` is `0`"
+  expect task_ok(t)
+  expect not task_ok("make the agents smarter with types")
+  expect not task_ok("add an exported function f(x: Number) -> Number to kosika/std/stats.kos that doubles; examples: `f(1)` is `2`")
+  expect task_line(t, lab_paper()).starts_with("- [ ] add an exported function share_of")
+  expect task_line(t, lab_paper()).ends_with("(from the lab: https://arxiv.org/abs/2611.00001v1)")
+  expect task_line("add an exported function g(x: Number) -> Number to kosika/std/stats.kos that doubles x; examples: `g(1)` is `2`, `g(0)` is `0`", lab_paper()).contains(".kos, written in Kosika, that doubles")
+}
+
+test "the day's notes say what was read, and what was left out" {
+  good: LabNote = {learn: "Agents can check each tool call against a type system and a schema before it runs, which catches most wrong calls.", idea: "Check tool calls by type.", task: "add an exported function share_of(part: Number, whole: Number) -> Number to kosika/std/stats.kos, written in Kosika, that gives part over whole, and 0 when whole is 0; examples: `share_of(1, 4)` is `0.25`, `share_of(3, 0)` is `0`", lesson: "The paper shows that LLM agents make fewer mistakes when every tool call is checked against a schema first. A verification step catches the wrong calls.", try_yourself: "Write a record and watch Kosika refuse a wrong call."}
+  lab = lab_of("2026-11-26", [studied(lab_paper(), good), studied(lab_paper(), no_note())])
+  expect lab.papers == 1 and lab.tasks.length() == 1
+  expect lab.notes.contains("## Checking Agent Tool Calls with Types") and lab.notes.contains("**For you.**") and lab.notes.contains("**Try it yourself.**")
+  expect lab_of("2026-11-26", []).notes.contains("No new paper near Kosika")
+}
+
+test "a day with a paper: read, studied, checked, and noted" {
+  answers read_feed: [{url: "a", title: "feed", text: lab_feed()}, {url: "b", title: "feed", text: ""}]
+  answers researcher: [{learn: "Agents can check each tool call against a type system and a schema before it runs, which catches most wrong calls.", idea: "Check tool calls by type.", task: "add an exported function share_of(part: Number, whole: Number) -> Number to kosika/std/stats.kos, written in Kosika, that gives part over whole, and 0 when whole is 0; examples: `share_of(1, 4)` is `0.25`, `share_of(3, 0)` is `0`", lesson: "The paper shows that LLM agents make fewer mistakes when every tool call is checked against a schema first. A verification step catches the wrong calls.", try_yourself: "Write a record and watch Kosika refuse a wrong call."}]
+  lab = main({most: 2})
+  expect lab.papers == 1
+  expect lab.tasks.length() == 1
+  expect lab.said == "Read 1 paper(s) near Kosika; 1 task(s) for the coders."
+}
+
+test "a task in the wrong shape is asked for again, told what was wrong" {
+  expect task_problem("make agents check tools") == "begin with: add an exported function NAME(ARG: TYPE) -> TYPE to kosika/std/stats.kos"
+  expect task_problem("add an exported function f(x: Number) -> Number that doubles x") == "say the file: to kosika/std/stats.kos or to kosika/std/text.kos"
+  expect task_problem("add an exported function f(x: Number) -> Number to kosika/std/stats.kos that doubles x").starts_with("end with: examples:")
+  expect task_problem("`add an exported function f(x: Number) -> Number to kosika/std/stats.kos, written in Kosika, that doubles x; examples: `f(1)` is `2`, `f(0)` is `0``") == ""
+  answers read_feed: [{url: "a", title: "feed", text: lab_feed()}, {url: "b", title: "feed", text: ""}]
+  answers researcher: [{learn: "Agents can check each tool call against a type system and a schema before it runs, which catches most wrong calls.", idea: "Check tool calls by type.", task: "Add a type checker for tool calls.", lesson: "The paper shows that LLM agents make fewer mistakes when every tool call is checked against a schema first. A verification step catches the wrong calls.", try_yourself: "Write a record and watch Kosika refuse a wrong call."}]
+  answers tasker: [{text: "add an exported function share_of(part: Number, whole: Number) -> Number to kosika/std/stats.kos, written in Kosika, that gives part over whole, and 0 when whole is 0; examples: `share_of(1, 4)` is `0.25`, `share_of(3, 0)` is `0`"}]
+  lab = main({most: 1})
+  expect lab.tasks.length() == 1 and lab.tasks[0].contains("share_of")
+}
+
+test "a task must compute something, on its arguments alone" {
+  expect task_problem("add an exported function verify_multi_stage(func: Text, args: Text[]) -> Bool to kosika/std/text.kos, written in Kosika, that runs the given function in both engines and returns true when all pass; examples: `verify_multi_stage(\"sum\", [\"1\"])` is `true`, `verify_multi_stage(\"x\", [])` is `false`").contains("pure calculation")
+  expect echoes("add an exported function adjust_to_state(values: Number[], target: Number[]) -> Number[] to kosika/std/stats.kos, written in Kosika, that shifts each value to its target; examples: `adjust_to_state([3,5],[4,2])` is `[4,2]`, `adjust_to_state([10,0,7],[8,0,9])` is `[8,0,9]`")
+  expect not echoes("add an exported function share_of(part: Number, whole: Number) -> Number to kosika/std/stats.kos, written in Kosika, that gives part over whole; examples: `share_of(1, 4)` is `0.25`, `share_of(3, 0)` is `0`")
+  expect task_problem("add an exported function share_of(part: Number, whole: Number) -> Number to kosika/std/stats.kos, written in Kosika, that gives part over whole, and 0 when whole is 0; examples: `share_of(1, 4)` is `0.25`, `share_of(3, 0)` is `0`") == ""
+}
