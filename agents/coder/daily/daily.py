@@ -714,6 +714,9 @@ def main() -> None:
             count += 1
     # What it was asked, for the live board (swarm_watch.py) while it works.
     (place / "request.txt").write_text(text, encoding="utf-8")
+    # Which coder of the swarm did it, for Studio's Coders page.
+    if os.environ.get("KOSIKA_AGENT"):
+        (place / "agent.txt").write_text(os.environ["KOSIKA_AGENT"], encoding="utf-8")
     # A Go build folder of its own: coders of a swarm building at once in
     # one shared folder lock each other out ("Access is denied").
     os.environ["GOCACHE"] = str(place / ".gocache")
